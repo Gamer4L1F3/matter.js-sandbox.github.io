@@ -1,0 +1,2183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics Sandbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Space Grotesk', sans-serif; overflow: hidden; }
+        canvas { display: block; }
+        .tool-btn { transition: all .15s ease; position: relative; overflow: hidden; }
+        .tool-btn::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(245,158,11,.08), transparent 70%); opacity: 0; transition: opacity .2s; }
+        .tool-btn:hover::before { opacity: 1; }
+        .tool-btn:hover { background: rgba(245,158,11,.08); }
+        .tool-btn.active { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.5) !important; color: #f59e0b; box-shadow: 0 0 12px rgba(245,158,11,.1), inset 0 0 12px rgba(245,158,11,.05); }
+        .tool-btn.active::before { opacity: 1; }
+        .mode-btn { transition: all .25s cubic-bezier(.4,0,.2,1); letter-spacing: .05em; }
+        .mode-btn.play { background: linear-gradient(135deg,#10b981,#059669); color: #fff; font-weight: 600; box-shadow: 0 0 20px rgba(16,185,129,.2); }
+        .mode-btn.build { background: rgba(245,158,11,.08); color: #f59e0b; border: 1px solid rgba(245,158,11,.25); }
+        .step-btn { transition: all .2s ease; background: rgba(139,92,246,.08); color: #a78bfa; border: 1px solid rgba(139,92,246,.2); }
+        .step-btn:hover:not(:disabled) { background: rgba(139,92,246,.15); border-color: rgba(139,92,246,.35); box-shadow: 0 0 12px rgba(139,92,246,.1); }
+        .step-btn:disabled { opacity: .3; cursor: not-allowed; }
+        .reset-btn { transition: all .2s ease; background: rgba(20,184,166,.08); color: #2dd4bf; border: 1px solid rgba(20,184,166,.2); }
+        .reset-btn:hover:not(:disabled) { background: rgba(20,184,166,.15); border-color: rgba(20,184,166,.35); box-shadow: 0 0 12px rgba(20,184,166,.1); }
+        .reset-btn:disabled { opacity: .3; cursor: not-allowed; }
+        .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(55,65,81,.8), transparent); }
+        .counter { font-family: 'JetBrains Mono', monospace; }
+        .clear-btn { transition: all .2s ease; color: #f87171; border: 1px solid rgba(239,68,68,.15); background: rgba(239,68,68,.05); }
+        .clear-btn:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.3); box-shadow: 0 0 12px rgba(239,68,68,.08); }
+        #modeIndicator { transition: all .3s cubic-bezier(.4,0,.2,1); backdrop-filter: blur(8px); }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+        @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,.3); } 70% { box-shadow: 0 0 0 6px rgba(245,158,11,0); } 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } }
+        .tool-btn.active { animation: pulse-ring 2s ease-out infinite; }
+        .props-panel { transition: opacity .2s ease, max-height .3s ease; overflow: hidden; }
+        .props-panel.hidden-panel { opacity: 0; max-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; pointer-events: none; }
+        .prop-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: #374151; outline: none; cursor: pointer; }
+        .prop-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #f59e0b; cursor: pointer; box-shadow: 0 0 6px rgba(245,158,11,.3); transition: box-shadow .15s; }
+        .prop-slider::-webkit-slider-thumb:hover { box-shadow: 0 0 10px rgba(245,158,11,.5); }
+        .prop-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #f59e0b; cursor: pointer; border: none; box-shadow: 0 0 6px rgba(245,158,11,.3); }
+        .color-swatch { width: 22px; height: 22px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; transition: all .12s ease; flex-shrink: 0; }
+        .color-swatch:hover { transform: scale(1.15); }
+        .color-swatch.active-swatch { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,.2); }
+        .static-toggle { position: relative; width: 36px; height: 20px; border-radius: 10px; background: #374151; cursor: pointer; transition: background .2s; flex-shrink: 0; }
+        .static-toggle.on { background: #f59e0b; }
+        .static-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+        .static-toggle.on::after { transform: translateX(16px); }
+        .size-group { transition: opacity .15s ease, max-height .2s ease; overflow: hidden; }
+        .size-group.size-hidden { opacity: 0; max-height: 0 !important; margin: 0 !important; pointer-events: none; }
+        .world-slider { -webkit-appearance: none; appearance: none; height: 6px; width: 100%; background: #374151; border-radius: 9px; outline: none; cursor: pointer; }
+        .world-slider:disabled { opacity: .3; cursor: not-allowed; }
+        .world-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #3b82f6; cursor: pointer; box-shadow: 0 0 6px rgba(59,130,246,.4); transition: box-shadow .15s; }
+        .world-slider::-webkit-slider-thumb:hover { box-shadow: 0 0 10px rgba(59,130,246,.6); }
+        .world-slider:disabled::-webkit-slider-thumb { cursor: not-allowed; }
+        .world-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #3b82f6; cursor: pointer; border: none; box-shadow: 0 0 6px rgba(59,130,246,.4); }
+        .world-number { -webkit-appearance: none; -moz-appearance: none; appearance: none; width: 100%; height: 30px; background: #1f2937; border: 1px solid #374151; border-radius: 6px; color: #d1d5db; font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 0 8px; outline: none; transition: border-color .15s; }
+        .world-number:focus { border-color: #3b82f6; }
+        .world-number:disabled { opacity: .3; cursor: not-allowed; }
+        .check-toggle { position: relative; width: 36px; height: 20px; border-radius: 10px; background: #374151; cursor: pointer; transition: background .2s; flex-shrink: 0; }
+        .check-toggle.on { background: #3b82f6; }
+        .check-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+        .check-toggle.on::after { transform: translateX(16px); }
+        .save-input { -webkit-appearance: none; -moz-appearance: none; appearance: none; width: 100%; height: 28px; background: #1f2937; border: 1px solid #374151; border-radius: 4px; color: #d1d5db; font-family: 'Space Grotesk', sans-serif; font-size: 11px; padding: 0 6px; outline: none; transition: border-color .15s; }
+        .save-input:focus { border-color: #3b82f6; }
+        .save-btn { transition: all .2s ease; color: #34d399; border: 1px solid rgba(52,211,153,.15); background: rgba(52,211,153,.05); }
+        .save-btn:hover { background: rgba(52,211,153,.15); border-color: rgba(52,211,153,.3); }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toast-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+        .toast { animation: toast-in .2s ease forwards; }
+        .toast.fade-out { animation: toast-out .3s ease forwards; }
+        .snap-indicator {
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            pointer-events: none;
+            transition: opacity .2s ease;
+        }
+        .motor-props { transition: opacity .15s ease, max-height .2s ease; overflow: hidden; }
+        .motor-props.motor-hidden { opacity: 0; max-height: 0 !important; margin: 0 !important; pointer-events: none; }
+        .minimap-container { position: absolute; bottom: 12px; right: 12px; border: 1px solid rgba(55,65,81,.6); border-radius: 6px; overflow: hidden; background: rgba(26,26,46,.85); backdrop-filter: blur(6px); cursor: pointer; }
+        .minimap-container canvas { display: block; }
+        .filter-group { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700; transition: all .15s; border: 2px solid transparent; }
+        .filter-group.active-filter { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,.2); }
+    </style>
+</head>
+<body class="bg-gray-950">
+    <div class="flex h-screen w-screen">
+        <aside class="w-[220px] bg-gray-900 border-r border-gray-700 flex flex-col shrink-0 select-none">
+            <div class="p-4 flex flex-col gap-2">
+                <button id="modeToggle" class="mode-btn build w-full py-2.5 px-4 rounded-lg text-sm cursor-pointer">BUILD MODE</button>
+                <div class="flex gap-2">
+                    <button id="stepBtn" class="step-btn flex-1 py-2 px-4 rounded-lg text-sm cursor-pointer">STEP</button>
+                    <button id="resetBtn" class="reset-btn flex-1 py-2 px-4 rounded-lg text-sm cursor-pointer" disabled>RESET</button>
+                </div>
+            </div>
+            <div class="divider mx-4"></div>
+            <div class="px-4 py-3 flex items-center justify-between">
+                <span class="text-gray-500 text-[11px] uppercase tracking-widest font-medium">Objects</span>
+                <span id="objectCount" class="counter text-amber-400 text-lg font-semibold tabular-nums">0</span>
+            </div>
+            <div class="divider mx-4"></div>
+
+            <div id="toolsArea" class="px-3 py-3 overflow-y-auto flex-1" style="min-height:0">
+                <input id="bodySearchInput" type="text" class="save-input mb-3" placeholder="Search bodies by name...">
+                <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1 mb-2">Shapes</p>
+                <div class="flex flex-col gap-1 mb-3">
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="circle"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="6.5"/></svg>Circle</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="rectangle"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="3.5" width="13" height="9" rx="1"/></svg>Rectangle</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="triangle"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2L14.5 14H1.5Z"/></svg>Triangle</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="hexagon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5Z"/></svg>Hexagon</button>
+                </div>
+                <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1 mb-2">Platforms</p>
+                <div class="flex flex-col gap-1 mb-3">
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="platform"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="5" width="14" height="6" rx=".5" stroke-dasharray="2 2"/><line x1="1" y1="14" x2="4" y2="11"/><line x1="15" y1="14" x2="12" y2="11"/></svg>Static Platform</button>
+                </div>
+                <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1 mb-2">Constraints & Triggers</p>
+                <div class="flex flex-col gap-1 mb-3">
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="sensor"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="4" width="12" height="8" rx="1" stroke-dasharray="2 2"/><path d="M5 8H11M8 5V11" stroke-width="1"/></svg>Sensor Zone</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="pin"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="5.5" r="3"/><line x1="8" y1="8.5" x2="8" y2="15"/></svg>Pin</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="link"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="2" y1="8" x2="14" y2="8"/><circle cx="2" cy="8" r="2"/><circle cx="14" cy="8" r="2"/></svg>Link</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="spring"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8L4 4.5L6.5 11.5L9 4.5L11.5 11.5L14.5 8"/></svg>Spring</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="rope"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 12C4 8 6 16 8 12C10 8 12 16 14 12"/></svg>Rope</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="motor"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="5" stroke-dasharray="3 2"/><path d="M12 3L14 6L11 5.5" fill="currentColor"/></svg>Motor</button>
+                </div>
+                <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1 mb-2">Utility</p>
+                <div class="flex flex-col gap-1">
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="select"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.5 1.5L3.5 12.5L7.5 8.5L11.5 8.5L3.5 1.5Z"/></svg>Select</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="freehand"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 14L5 4L8 10L11 2L14 12" stroke-linecap="round" stroke-linejoin="round"/></svg>Freehand</button>
+                    <button class="tool-btn flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent text-gray-400 text-sm cursor-pointer" data-tool="eraser"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 13h10"/><path d="M5.5 10.5L2.5 7.5l5-5 6 6-2.5 2.5H5.5z"/><path d="M8.5 3l3 3"/></svg>Eraser</button>
+                </div>
+
+                <div id="propsPanel" class="props-panel hidden-panel pt-3 mt-3" style="max-height:700px">
+                    <div class="divider mb-3"></div>
+                    <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1 mb-2">Properties</p>
+                    <div id="propTypeLabel" class="counter text-[10px] text-gray-500 px-1 mb-3 uppercase tracking-wider"></div>
+                    <div id="sizeRadius" class="size-group size-hidden px-1 mb-3" style="max-height:120px">
+                        <div class="mb-2.5">
+                            <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Radius</span><span id="radiusVal" class="counter text-amber-400 text-[11px]">25</span></div>
+                            <input id="radiusSlider" type="range" class="prop-slider" min="5" max="200" step="1" value="25">
+                        </div>
+                        <div id="sidesGroup">
+                            <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Sides</span><span id="sidesVal" class="counter text-amber-400 text-[11px]">6</span></div>
+                            <input id="sidesSlider" type="range" class="prop-slider" min="3" max="12" step="1" value="6">
+                        </div>
+                    </div>
+                    <div id="sizeRect" class="size-group size-hidden px-1 mb-3" style="max-height:110px">
+                        <div class="mb-2.5">
+                            <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Width</span><span id="widthVal" class="counter text-amber-400 text-[11px]">80</span></div>
+                            <input id="widthSlider" type="range" class="prop-slider" min="10" max="500" step="1" value="80">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Height</span><span id="heightVal" class="counter text-amber-400 text-[11px]">50</span></div>
+                            <input id="heightSlider" type="range" class="prop-slider" min="10" max="500" step="1" value="50">
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between px-1 mb-3"><span class="text-gray-400 text-xs">Static</span><div id="staticToggle" class="static-toggle"></div></div>
+                    <div class="px-1 mb-2.5">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Friction</span><span id="frictionVal" class="counter text-amber-400 text-[11px]">0.30</span></div>
+                        <input id="frictionSlider" type="range" class="prop-slider" min="0" max="1" step="0.01" value="0.3">
+                    </div>
+                    <div class="px-1 mb-2.5">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Air Drag</span><span id="frictionAirVal" class="counter text-amber-400 text-[11px]">0.010</span></div>
+                        <input id="frictionAirSlider" type="range" class="prop-slider" min="0" max="0.2" step="0.001" value="0.01">
+                    </div>
+                    <div class="px-1 mb-2.5">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Bounciness</span><span id="restitutionVal" class="counter text-amber-400 text-[11px]">0.40</span></div>
+                        <input id="restitutionSlider" type="range" class="prop-slider" min="0" max="1.2" step="0.01" value="0.4">
+                    </div>
+                    <div class="px-1 mb-2.5">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Density</span><span id="densityVal" class="counter text-amber-400 text-[11px]">0.0010</span></div>
+                        <input id="densitySlider" type="range" class="prop-slider" min="0.0001" max="0.01" step="0.0001" value="0.001">
+                    </div>
+                    <div class="px-1 mb-2.5">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Angle</span><span id="angleVal" class="counter text-amber-400 text-[11px]">0&deg;</span></div>
+                        <input id="angleSlider" type="range" class="prop-slider" min="0" max="360" step="1" value="0">
+                    </div>
+                    <div class="px-1 mb-3"><span class="text-gray-400 text-xs block mb-2">Color</span><div id="colorSwatches" class="flex gap-1.5 flex-wrap"></div></div>
+                    <div class="px-1 mb-3"><span class="text-gray-400 text-xs block mb-1.5">Name</span><input id="bodyNameInput" type="text" class="save-input" placeholder="Name this body..." maxlength="24"></div>
+                    <div id="motorPropsGroup" class="motor-props motor-hidden px-1 mb-3" style="max-height:80px">
+                        <div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Motor Speed</span><span id="motorSpeedVal" class="counter text-amber-400 text-[11px]">0.050</span></div>
+                        <input id="motorSpeedSlider" type="range" class="prop-slider" min="-0.2" max="0.2" step="0.005" value="0.05">
+                    </div>
+                    <div id="filterGroupSection" class="px-1 mb-3" style="display:none">
+                        <span class="text-gray-400 text-xs block mb-2">Collision Group</span>
+                        <div id="filterGroupPicker" class="flex gap-1 flex-wrap"></div>
+                        <div class="flex items-center justify-between mt-2 mb-1.5"><span class="text-gray-400 text-xs">Category</span><span id="filterCatVal" class="counter text-amber-400 text-[11px]">1</span></div>
+                        <input id="filterCatSlider" type="range" class="prop-slider" min="1" max="16" step="1" value="1">
+                    </div>
+                    <button id="deleteSelected" class="w-full py-1.5 px-2 rounded text-xs text-red-400 border border-red-400/15 bg-red-400/5 hover:bg-red-400/15 hover:border-red-400/25 transition-all cursor-pointer mb-1">Delete Selected</button>
+                </div>
+            </div>
+
+            <div class="divider mx-4"></div>
+            <div id="saveLoadArea" class="px-3 py-3 flex flex-col gap-2 overflow-y-auto" style="max-height:180px;min-height:0">
+                <p class="text-gray-600 text-[10px] uppercase tracking-[.15em] font-medium px-1">Save / Load</p>
+                <div id="toastContainer" style="min-height:0"></div>
+                <div class="flex gap-1">
+                    <input id="saveNameInput" type="text" class="save-input flex-1" placeholder="Save name...">
+                    <button id="saveBtn" class="save-btn px-2 rounded text-xs font-medium cursor-pointer">Save</button>
+                </div>
+                <select id="loadDropdown" class="save-input cursor-pointer" style="padding-right:4px;">
+                    <option value="">-- Load Creation --</option>
+                </select>
+                <button id="loadBtn" class="save-btn w-full py-1 px-2 rounded text-xs font-medium cursor-pointer">Load Selected</button>
+                <button id="deleteSaveBtn" class="w-full py-1 px-2 rounded text-xs cursor-pointer transition-all" style="color:#f87171;border:1px solid rgba(239,68,68,.12);background:rgba(239,68,68,.04);">Delete Save</button>
+                <div id="storageWarning" class="text-[10px] text-amber-500/70 px-1 hidden">Session only — saves lost on refresh</div>
+            </div>
+
+            <div class="divider mx-4"></div>
+            <div class="p-3"><button id="clearAll" class="clear-btn w-full py-2 px-3 rounded-lg text-sm cursor-pointer font-medium">Clear All</button></div>
+            <div class="px-4 pb-3">
+                <div class="flex flex-col gap-1 text-[11px] text-gray-600">
+                    <div class="flex justify-between"><span>Ctrl+Z/Y</span><span class="counter text-gray-500">Undo/Redo</span></div>
+                    <div class="flex justify-between"><span>Ctrl+D</span><span class="counter text-gray-500">Duplicate</span></div>
+                    <div class="flex justify-between"><span>Space</span><span class="counter text-gray-500">Play/Build</span></div>
+                    <div class="flex justify-between"><span>Arrows</span><span class="counter text-gray-500">Pan map</span></div>
+                    <div class="flex justify-between"><span>Scroll</span><span class="counter text-gray-500">Zoom</span></div>
+                    <div class="flex justify-between"><span>G</span><span class="counter text-gray-500">Grid Snap</span></div>
+                    <div class="flex justify-between"><span>P</span><span class="counter text-gray-500">Screenshot</span></div>
+                    <div class="flex justify-between"><span>M</span><span class="counter text-gray-500">Toggle Minimap</span></div>
+                    <div class="flex justify-between"><span>X</span><span class="counter text-gray-500">Mirror X</span></div>
+                    <div class="flex justify-between"><span>Y</span><span class="counter text-gray-500">Mirror Y</span></div>
+                </div>
+            </div>
+        </aside>
+
+        <main id="canvasContainer" class="flex-1 relative min-w-0">
+            <canvas id="canvas"></canvas>
+            <div id="modeIndicator" class="absolute top-4 left-4 px-3 py-1.5 rounded-md text-[11px] font-semibold tracking-widest pointer-events-none" style="background:rgba(245,158,11,.08);color:#f59e0b;border:1px solid rgba(245,158,11,.18)">BUILD</div>
+            <div id="snapIndicator" class="snap-indicator" style="opacity:0;background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.25);backdrop-filter:blur(8px);">SNAP</div>
+            <div id="toolHint" class="absolute bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-xs text-gray-500 pointer-events-none" style="background:rgba(26,26,46,.85);border:1px solid rgba(55,65,81,.4);backdrop-filter:blur(6px)">Select a tool from the sidebar to begin building</div>
+            <div class="minimap-container" id="minimapContainer"><canvas id="minimapCanvas" width="180" height="180"></canvas></div>
+        </main>
+
+        <aside class="w-[260px] bg-gray-900 border-l border-gray-700 flex flex-col shrink-0 select-none overflow-y-auto">
+            <div class="px-4 pt-4 pb-2"><p class="text-gray-300 text-sm font-semibold tracking-wide">World Settings</p></div>
+            <div id="sensorPropsPanel" class="px-4 pb-4" style="display: none;">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Sensor Action</p>
+                <select id="sensorActionSelect" class="world-number cursor-pointer" style="height:36px; padding: 0 8px;"><option value="forceUp">Launch Up</option><option value="toggleStatic">Toggle Static</option><option value="delete">Delete Body</option><option value="zeroGravity">Zero Gravity</option></select>
+            </div>
+            <div id="sensorDivider" class="divider mx-4" style="display: none;"></div>
+            <div class="px-4 pb-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Gravity</p>
+                <div class="mb-3"><div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Scale (Y)</span><span id="gravityYVal" class="counter text-blue-400 text-[11px]">1.0</span></div><input id="gravityYSlider" type="range" class="world-slider" min="0" max="5" step="0.1" value="1"></div>
+                <div><div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Horizontal (X)</span><span id="gravityXVal" class="counter text-blue-400 text-[11px]">0.0</span></div><input id="gravityXSlider" type="range" class="world-slider" min="-5" max="5" step="0.1" value="0"></div>
+            </div>
+            <div class="divider mx-4"></div>
+            <div class="px-4 pb-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Engine</p>
+                <div class="mb-3"><div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Time Scale</span><span id="timeScaleVal" class="counter text-blue-400 text-[11px]">1.0</span></div><input id="timeScaleSlider" type="range" class="world-slider" min="0" max="3" step="0.1" value="1"></div>
+                <div class="flex gap-2 mb-3"><div class="flex-1"><span class="text-gray-400 text-xs block mb-1.5">Vel. Iterations</span><input id="velIterInput" type="number" class="world-number" min="1" max="20" value="6"></div><div class="flex-1"><span class="text-gray-400 text-xs block mb-1.5">Pos. Iterations</span><input id="posIterInput" type="number" class="world-number" min="1" max="20" value="4"></div></div>
+                <div class="flex items-center justify-between"><span class="text-gray-400 text-xs">Enable Sleeping</span><div id="sleepToggle" class="check-toggle"></div></div>
+            </div>
+            <div class="divider mx-4"></div>
+            <div class="px-4 pb-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Display</p>
+                <div class="flex items-center justify-between mb-3"><span class="text-gray-400 text-xs">Velocity Vectors</span><div id="velocityToggle" class="check-toggle"></div></div>
+                <div class="flex items-center justify-between mb-3"><span class="text-gray-400 text-xs">Angle Indicator</span><div id="angleToggle" class="check-toggle"></div></div>
+                <div class="flex items-center justify-between mb-3"><span class="text-gray-400 text-xs">Collision Bounds</span><div id="boundsToggle" class="check-toggle"></div></div>
+                <div class="flex items-center justify-between mb-3"><span class="text-gray-400 text-xs">Collision Sounds</span><div id="soundToggle" class="check-toggle"></div></div>
+                <div class="mb-3"><div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Sound Volume</span><span id="soundVolumeVal" class="counter text-blue-400 text-[11px]">0.30</span></div><input id="soundVolumeSlider" type="range" class="world-slider" min="0" max="1" step="0.05" value="0.3"></div>
+                <div><div class="flex items-center justify-between mb-1.5"><span class="text-gray-400 text-xs">Background Opacity</span><span id="bgOpacityVal" class="counter text-blue-400 text-[11px]">1.00</span></div><input id="bgOpacitySlider" type="range" class="world-slider" min="0" max="1" step="0.05" value="1"></div>
+            </div>
+            <div class="divider mx-4"></div>
+            <div class="px-4 pb-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Export</p>
+                <button id="screenshotBtn" class="w-full py-2 px-3 rounded-lg text-sm cursor-pointer font-medium transition-all" style="color:#34d399;border:1px solid rgba(52,211,153,.15);background:rgba(52,211,153,.05);">Screenshot (P)</button>
+            </div>
+            <div class="divider mx-4"></div>
+            <div class="px-4 pb-4">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-bold mb-3">Mirror Mode</p>
+                <div class="flex gap-2">
+                    <button id="mirrorXBtn" class="flex-1 py-2 px-2 rounded-lg text-xs font-medium cursor-pointer transition-all" style="color:#60a5fa;border:1px solid rgba(96,165,250,.15);background:rgba(96,165,250,.05);">Mirror X (X)</button>
+                    <button id="mirrorYBtn" class="flex-1 py-2 px-2 rounded-lg text-xs font-medium cursor-pointer transition-all" style="color:#f472b6;border:1px solid rgba(244,114,182,.15);background:rgba(244,114,182,.05);">Mirror Y (Y)</button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const { Engine, Bodies, Body, Composite, Constraint, Mouse, MouseConstraint, Query, Vector, Events } = Matter;
+
+        const SHAPE_COLORS = ['#2ecc71','#e74c3c','#3498db','#f1c40f','#e67e22','#1abc9c'];
+        function randomColor() { return SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)]; }
+
+        const shapeTools = ['circle', 'rectangle', 'triangle', 'hexagon'];
+        const constraintTools = ['pin', 'link', 'spring', 'rope', 'motor'];
+        const dragTools = [...shapeTools, 'platform', 'sensor'];
+
+        let mode = 'build', currentTool = null, mouseX = 0, mouseY = 0;
+        let isMouseDown = false, isPanning = false, panStartX = 0, panStartY = 0;
+        let startX = 0, startY = 0, ghostParams = null;
+        let selectedBody = null, constraintStep = 1, constraintBodyA = null;
+        let userBodies = [], userConstraints = [], hoveredBody = null;
+        let updatingSliders = false;
+        let fpsFrames = 0, fpsTime = performance.now(), fpsDisplay = 0;
+        let showVelocity = false, showAngle = false, showBounds = false, bgOpacity = 1;
+        let camera = { x: 0, y: 0, zoom: 1 };
+        const keysPressed = {};
+
+        /* Grid Snap state */
+        let gridSnap = false;
+        const GRID_SIZE = 40;
+        function snapToGrid(x, y) {
+            if (!gridSnap) return { x, y };
+            return {
+                x: Math.round(x / GRID_SIZE) * GRID_SIZE,
+                y: Math.round(y / GRID_SIZE) * GRID_SIZE
+            };
+        }
+
+        /* Collision Sound state */
+        let soundEnabled = false, soundVolume = 0.3;
+        let audioCtx = null;
+        let lastSoundTime = 0;
+
+        /* Minimap state */
+        let minimapVisible = true;
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const minimapCtx = minimapCanvas.getContext('2d');
+        const minimapContainer = document.getElementById('minimapContainer');
+
+        /* Freehand drawing state */
+        let freehandPoints = [];
+
+        /* Mirror state */
+        let mirrorX = false, mirrorY = false;
+
+        /* Body naming & search state */
+        const bodyNameInput = document.getElementById('bodyNameInput');
+        const bodySearchInput = document.getElementById('bodySearchInput');
+        let searchQuery = '';
+
+        /* Collision filter state */
+        const filterCatSlider = document.getElementById('filterCatSlider');
+        const filterCatVal = document.getElementById('filterCatVal');
+        const filterGroupPicker = document.getElementById('filterGroupPicker');
+        const filterGroupSection = document.getElementById('filterGroupSection');
+
+        /* Build filter group picker buttons */
+        [-4, -3, -2, -1, 0, 1, 2, 3, 4].forEach(g => {
+            const btn = document.createElement('div');
+            btn.className = 'filter-group';
+            btn.style.background = g === 0 ? 'rgba(52,211,153,.15)' : 'rgba(55,65,81,.5)';
+            btn.style.color = g === 0 ? '#34d399' : '#9ca3af';
+            btn.textContent = g === 0 ? 'Off' : g;
+            btn.dataset.group = g;
+            btn.addEventListener('click', () => {
+                if (!selectedBody || selectedBody.isSensor) return;
+                selectedBody.collisionFilter.group = g;
+                updateFilterGroupUI();
+            });
+            filterGroupPicker.appendChild(btn);
+        });
+
+        function updateFilterGroupUI() {
+            filterGroupPicker.querySelectorAll('.filter-group').forEach(btn => {
+                const g = parseInt(btn.dataset.group);
+                btn.classList.toggle('active-filter', selectedBody && selectedBody.collisionFilter && selectedBody.collisionFilter.group === g);
+            });
+            if (selectedBody && !selectedBody.isSensor) {
+                filterGroupSection.style.display = '';
+                filterCatSlider.value = selectedBody.collisionFilter ? selectedBody.collisionFilter.category : 1;
+                filterCatVal.textContent = selectedBody.collisionFilter ? selectedBody.collisionFilter.category : 1;
+            } else {
+                filterGroupSection.style.display = 'none';
+            }
+        }
+
+        filterCatSlider.addEventListener('input', () => {
+            if (!selectedBody || selectedBody.isSensor) return;
+            const cat = parseInt(filterCatSlider.value);
+            if (!selectedBody.collisionFilter) selectedBody.collisionFilter = { group: 0, category: cat, mask: 0xFFFFFFFF };
+            else selectedBody.collisionFilter.category = cat;
+            filterCatVal.textContent = cat;
+        });
+        function ensureAudioCtx() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        const engine = Engine.create({ gravity: { x: 0, y: 1 } });
+        const world = engine.world;
+
+        const mouse = Mouse.create(canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: { stiffness: 0.2, render: { visible: false } }
+        });
+
+        let ground, leftWall, rightWall, ceiling;
+        const BT = 60;
+        const WORLD_W = 2500;
+        const WORLD_H = 2500;
+
+        /* ═════════════════════════════════════════════════════════ */
+        const STORAGE_KEY = 'physicsSandbox_saves';
+        let localStorageWritable = false;
+        let memorySaves = {};
+
+        (function probeLocalStorage() {
+            try {
+                window.localStorage.setItem('__sandbox_probe__', '1');
+                window.localStorage.removeItem('__sandbox_probe__');
+                localStorageWritable = true;
+            } catch (e) {
+                localStorageWritable = false;
+            }
+        })();
+
+        (function loadInitialSaves() {
+            if (!localStorageWritable) return;
+            try {
+                const raw = window.localStorage.getItem(STORAGE_KEY);
+                if (raw !== null) {
+                    memorySaves = JSON.parse(raw);
+                }
+            } catch (e) {
+                memorySaves = {};
+            }
+        })();
+
+        function getSaves() {
+            return memorySaves;
+        }
+
+        function flushToLocalStorage() {
+            if (!localStorageWritable) {
+                return 'blocked';
+            }
+            try {
+                const serialized = JSON.stringify(memorySaves);
+                window.localStorage.setItem(STORAGE_KEY, serialized);
+                return 'persisted';
+            } catch (e) {
+                if (
+                    e.name === 'QuotaExceededError' ||
+                    e.code === 22 ||
+                    e.code === 1014
+                ) {
+                    return 'quota';
+                }
+                localStorageWritable = false;
+                updateStorageWarning();
+                return 'error';
+            }
+        }
+
+        function updateStorageWarning() {
+            const warning = document.getElementById('storageWarning');
+            if (!localStorageWritable) {
+                warning.classList.remove('hidden');
+            } else {
+                warning.classList.add('hidden');
+            }
+        }
+
+        /* ══════════════════════════════
+           UNDO / REDO
+           ════════════════════════════ */
+        let undoStack = [], redoStack = [], moveStartPos = null;
+        const MAX_UNDO_HISTORY = 150;
+
+        function pushUndo(action) {
+            undoStack.push(action);
+            if (undoStack.length > MAX_UNDO_HISTORY) undoStack.shift();
+            redoStack = [];
+        }
+
+        function performUndo() {
+            if (!undoStack.length || mode !== 'build') return;
+            const a = undoStack.pop();
+            if (a.type === 'add') removeBodyInternal(a.target);
+            else if (a.type === 'addConstraint') {
+                Composite.remove(world, a.target);
+                const i = userConstraints.indexOf(a.target);
+                if (i > -1) userConstraints.splice(i, 1);
+            } else if (a.type === 'addChain') {
+                a.constraints.forEach(c => {
+                    Composite.remove(world, c);
+                    const ci = userConstraints.indexOf(c);
+                    if (ci > -1) userConstraints.splice(ci, 1);
+                });
+                a.bodies.forEach(b => {
+                    Composite.remove(world, b);
+                    const bi = userBodies.indexOf(b);
+                    if (bi > -1) userBodies.splice(bi, 1);
+                });
+            } else if (a.type === 'remove') {
+                Composite.add(world, a.target);
+                userBodies.push(a.target);
+                if (a.linkedConstraints) {
+                    a.linkedConstraints.forEach(c => {
+                        Composite.add(world, c);
+                        userConstraints.push(c);
+                    });
+                }
+            } else if (a.type === 'move') {
+                Body.setPosition(a.target, a.oldPos);
+                Body.setVelocity(a.target, { x: 0, y: 0 });
+            } else if (a.type === 'addMirror') {
+                a.bodies.forEach(b => removeBodyInternal(b));
+            } else if (a.type === 'resize') {
+                /* BUG FIX #4: Undo body resize — restore old size */
+                a.target = doReplaceBodySize(a.target, a.oldSizeOpts);
+                if (selectedBody) showPropsPanel(selectedBody);
+            }
+            redoStack.push(a);
+            if (selectedBody && !userBodies.includes(selectedBody) && !userConstraints.includes(selectedBody)) {
+                selectedBody = null;
+                showPropsPanel(null);
+            }
+        }
+
+        function performRedo() {
+            if (!redoStack.length || mode !== 'build') return;
+            const a = redoStack.pop();
+            if (a.type === 'add') {
+                Composite.add(world, a.target);
+                userBodies.push(a.target);
+            } else if (a.type === 'addConstraint') {
+                Composite.add(world, a.target);
+                userConstraints.push(a.target);
+            } else if (a.type === 'addChain') {
+                a.bodies.forEach(b => {
+                    Composite.add(world, b);
+                    userBodies.push(b);
+                });
+                a.constraints.forEach(c => {
+                    Composite.add(world, c);
+                    userConstraints.push(c);
+                });
+            } else if (a.type === 'remove') {
+                removeBodyInternal(a.target);
+            } else if (a.type === 'move') {
+                Body.setPosition(a.target, a.newPos);
+                Body.setVelocity(a.target, { x: 0, y: 0 });
+            } else if (a.type === 'addMirror') {
+                a.bodies.forEach(b => { Composite.add(world, b); userBodies.push(b); });
+            } else if (a.type === 'resize') {
+                /* BUG FIX #4: Redo body resize — restore new size */
+                a.target = doReplaceBodySize(a.target, a.newSizeOpts);
+                if (selectedBody) showPropsPanel(selectedBody);
+            }
+            undoStack.push(a);
+        }
+
+        function removeBodyInternal(body) {
+            /* BUG FIX #5: Clean up stale sensor overlap references */
+            for (const [key, overlap] of activeOverlaps) {
+                if (overlap.body === body || overlap.sensor === body) {
+                    activeOverlaps.delete(key);
+                }
+            }
+
+            const allC = Composite.allConstraints(world);
+            for (let i = allC.length - 1; i >= 0; i--) {
+                if ((allC[i].bodyA === body || allC[i].bodyB === body) && allC[i] !== mouseConstraint.constraint) {
+                    Composite.remove(world, allC[i]);
+                    const idx = userConstraints.indexOf(allC[i]);
+                    if (idx > -1) userConstraints.splice(idx, 1);
+                }
+            }
+            Composite.remove(world, body);
+            const idx = userBodies.indexOf(body);
+            if (idx > -1) userBodies.splice(idx, 1);
+        }
+
+        function removeBodyWithUndo(body) {
+            const linked = [];
+            const allC = Composite.allConstraints(world);
+            for (let i = 0; i < allC.length; i++) {
+                if ((allC[i].bodyA === body || allC[i].bodyB === body) && allC[i] !== mouseConstraint.constraint) {
+                    linked.push(allC[i]);
+                }
+            }
+            pushUndo({ type: 'remove', target: body, linkedConstraints: linked });
+            removeBodyInternal(body);
+        }
+
+        /* ══════════════════════════════
+           TOAST NOTIFICATIONS
+           ══════════════════════════════ */
+        function showToast(msg, color) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.cssText =
+                'font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:4px;' +
+                'font-weight:500;border:1px solid ' + color + '33;' +
+                'background:' + color + '15;color:' + color + ';';
+            toast.textContent = msg;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+        }
+
+        /* ══════════════════════════════
+           SHAPE TYPE DETECTION
+           ══════════════════════════════ */
+        function getShapeType(body) {
+            if (body.label === 'ropeLink') return 'circle';
+            if (body.isSensor || body.label === 'Sensor Zone') return 'sensor';
+            if (body.circleRadius) return 'circle';
+            const kind = bodyShapeKind(body);
+            if (kind === 'rectangle') return 'rectangle';
+            const v = body.vertices;
+            if (v.length === 3) return 'triangle';
+            if (v.length === 6) return 'hexagon';
+            return 'polygon';
+        }
+
+        /* ══════════════════════════════
+           SAVE / LOAD
+           ══════════════════════════════ */
+        function updateLoadDropdown() {
+            const dd = document.getElementById('loadDropdown');
+            const saves = getSaves();
+            const cur = dd.value;
+            dd.innerHTML = '<option value="">-- Load Creation --</option>';
+            Object.keys(saves).sort().forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                const bodyCount = saves[name].bodies ? saves[name].bodies.length : 0;
+                const linkCount = saves[name].constraints ? saves[name].constraints.length : 0;
+                let label = name + ' (' + bodyCount + ' bodies';
+                if (linkCount) label += ', ' + linkCount + ' links';
+                label += ')';
+                opt.textContent = label;
+                dd.appendChild(opt);
+            });
+            dd.value = cur;
+        }
+
+        function saveCurrentWorld(name) {
+            if (!name.trim()) {
+                showToast('Enter a save name first', '#f59e0b');
+                return;
+            }
+
+            const trimmedName = name.trim();
+
+            const bodiesData = userBodies.map(b => {
+                const st = getShapeType(b);
+                const data = {
+                    shapeType: st,
+                    x: b.position.x,
+                    y: b.position.y,
+                    angle: b.angle,
+                    isStatic: b.isStatic,
+                    friction: b.friction,
+                    frictionAir: b.frictionAir,
+                    restitution: b.restitution,
+                    density: b.density,
+                    color: (b.render && b.render.fillStyle) ? b.render.fillStyle : '#ccc',
+                    label: b.label || ''
+                };
+                if (b.collisionFilter) data.collisionFilter = { group: b.collisionFilter.group, category: b.collisionFilter.category, mask: b.collisionFilter.mask };
+                if (b.plugin && b.plugin.name) data.bodyName = b.plugin.name;
+
+                if (st === 'sensor') {
+                    data.width = getBodyWidth(b);
+                    data.height = getBodyHeight(b);
+                    if (b.plugin) data.plugin = b.plugin;
+                } else if (st === 'circle') {
+                    data.radius = b.circleRadius;
+                } else if (st === 'rectangle') {
+                    data.width = getBodyWidth(b);
+                    data.height = getBodyHeight(b);
+                } else {
+                    data.sides = b.vertices.length;
+                    data.radius = getBodyRadius(b);
+                }
+
+                return data;
+            });
+
+            const constraintsData = userConstraints.map(c => {
+                const cData = {
+                    bodyAIndex: userBodies.indexOf(c.bodyA),
+                    bodyBIndex: c.bodyB ? userBodies.indexOf(c.bodyB) : -1,
+                    pointA: c.pointA ? { x: c.pointA.x, y: c.pointA.y } : { x: 0, y: 0 },
+                    pointB: c.pointB ? { x: c.pointB.x, y: c.pointB.y } : { x: 0, y: 0 },
+                    stiffness: c.stiffness,
+                    damping: c.damping,
+                    length: c.length,
+                    type: (c.render && c.render.type) || 'link'
+                };
+                if (c.plugin) cData.plugin = JSON.parse(JSON.stringify(c.plugin));
+                return cData;
+            });
+
+            memorySaves[trimmedName] = { bodies: bodiesData, constraints: constraintsData };
+
+            updateLoadDropdown();
+            document.getElementById('saveNameInput').value = '';
+
+            const result = flushToLocalStorage();
+
+            if (result === 'persisted') {
+                showToast('Saved "' + trimmedName + '"', '#34d399');
+            } else if (result === 'blocked') {
+                showToast('Saved "' + trimmedName + '" (session only)', '#f59e0b');
+            } else if (result === 'quota') {
+                showToast('Saved to session — localStorage full', '#f59e0b');
+            } else {
+                showToast('Saved to session — storage error', '#f87171');
+            }
+        }
+
+        function loadWorld(name) {
+            const saves = getSaves();
+            const data = saves[name];
+            if (!data) {
+                showToast('Save not found', '#f87171');
+                return;
+            }
+
+            if (mode === 'play') Composite.remove(world, mouseConstraint);
+            Composite.clear(world, false);
+            userBodies = [];
+            userConstraints = [];
+            activeOverlaps.clear();
+            undoStack = [];
+            redoStack = [];
+            buildState = null;
+            selectedBody = null;
+            constraintStep = 1;
+            constraintBodyA = null;
+            freehandPoints = [];
+            isMouseDown = false;
+            showPropsPanel(null);
+            rebuildBoundaries();
+            if (mode === 'play') Composite.add(world, mouseConstraint);
+            syncResetBtn();
+
+            const tempBodies = [];
+            data.bodies.forEach(bData => {
+                let newBody = null;
+                const st = bData.shapeType || 'polygon';
+                const opts = {
+                    isStatic: bData.isStatic,
+                    friction: bData.friction,
+                    frictionAir: bData.frictionAir,
+                    restitution: bData.restitution,
+                    density: bData.density,
+                    render: { fillStyle: bData.color }
+                };
+
+                if (st === 'sensor') {
+                    opts.isSensor = true;
+                    opts.label = 'Sensor Zone';
+                    newBody = Bodies.rectangle(
+                        bData.x, bData.y,
+                        Math.max(10, bData.width || 100),
+                        Math.max(10, bData.height || 60),
+                        opts
+                    );
+                } else if (st === 'circle') {
+                    newBody = Bodies.circle(bData.x, bData.y, Math.max(5, bData.radius || 25), opts);
+                } else if (st === 'rectangle') {
+                    newBody = Bodies.rectangle(
+                        bData.x, bData.y,
+                        Math.max(10, bData.width || 80),
+                        Math.max(10, bData.height || 50),
+                        opts
+                    );
+                } else {
+                    const sides = Math.max(3, bData.sides || 4);
+                    const radius = Math.max(5, bData.radius || 25);
+                    newBody = Bodies.polygon(bData.x, bData.y, sides, radius, opts);
+                }
+
+                if (newBody) {
+                    Body.setAngle(newBody, bData.angle || 0);
+                    if (bData.label) newBody.label = bData.label;
+                    if (bData.plugin) newBody.plugin = bData.plugin;
+                    if (bData.collisionFilter) newBody.collisionFilter = bData.collisionFilter;
+                    if (bData.bodyName) { if (!newBody.plugin) newBody.plugin = {}; newBody.plugin.name = bData.bodyName; }
+                    if (!newBody.isSensor) {
+                        Body.setVelocity(newBody, { x: 0, y: 0 });
+                        Body.setAngularVelocity(newBody, 0);
+                    }
+                    Composite.add(world, newBody);
+                    userBodies.push(newBody);
+                    tempBodies.push(newBody);
+                }
+            });
+
+            data.constraints.forEach(cData => {
+                const bodyA = tempBodies[cData.bodyAIndex];
+                const bodyB = cData.bodyBIndex >= 0 ? tempBodies[cData.bodyBIndex] : null;
+                if (!bodyA) return;
+
+                const cOpts = {
+                    bodyA: bodyA,
+                    bodyB: bodyB,
+                    pointA: { x: cData.pointA.x, y: cData.pointA.y },
+                    pointB: { x: cData.pointB.x, y: cData.pointB.y },
+                    stiffness: cData.stiffness != null ? cData.stiffness : 1,
+                    damping: cData.damping != null ? cData.damping : 0,
+                    render: { type: cData.type }
+                };
+
+                if (cData.length != null) cOpts.length = cData.length;
+                if (cData.plugin) cOpts.plugin = cData.plugin;
+
+                const newC = Constraint.create(cOpts);
+                Composite.add(world, newC);
+                userConstraints.push(newC);
+            });
+
+            showToast('Loaded "' + name + '"', '#34d399');
+        }
+
+        function deleteSave(name) {
+            if (!name) {
+                showToast('Select a save to delete', '#f59e0b');
+                return;
+            }
+            const saves = getSaves();
+            if (!saves[name]) {
+                showToast('Save not found', '#f87171');
+                return;
+            }
+
+            delete memorySaves[name];
+
+            updateLoadDropdown();
+            document.getElementById('loadDropdown').value = '';
+
+            const result = flushToLocalStorage();
+
+            if (result === 'persisted') {
+                showToast('Deleted "' + name + '"', '#f87171');
+            } else if (result === 'blocked') {
+                showToast('Deleted from session', '#f59e0b');
+            } else if (result === 'quota') {
+                showToast('Deleted from session — could not update storage', '#f59e0b');
+            } else {
+                showToast('Deleted from session — storage error', '#f87171');
+            }
+        }
+
+        /* ══════════════════════════════
+           DUPLICATE
+           ══════════════════════════════ */
+        function duplicateSelected() {
+            if (!selectedBody || mode !== 'build') return;
+            const b = selectedBody;
+            const off = { x: 30, y: 30 };
+            const opts = {
+                isStatic: b.isStatic,
+                friction: b.friction,
+                frictionAir: b.frictionAir,
+                restitution: b.restitution,
+                density: b.density,
+                render: { fillStyle: b.render && b.render.fillStyle ? b.render.fillStyle : '#ccc' }
+            };
+            if (b.isSensor) { opts.isSensor = true; opts.label = 'Sensor Zone'; }
+            const kind = bodyShapeKind(b);
+            let newBody = null;
+            if (kind === 'circle') {
+                newBody = Bodies.circle(b.position.x + off.x, b.position.y + off.y, Math.max(5, b.circleRadius), opts);
+            } else if (kind === 'rectangle') {
+                newBody = Bodies.rectangle(b.position.x + off.x, b.position.y + off.y, Math.max(10, getBodyWidth(b)), Math.max(10, getBodyHeight(b)), opts);
+            } else {
+                newBody = Bodies.polygon(b.position.x + off.x, b.position.y + off.y, b.vertices.length, Math.max(5, getBodyRadius(b)), opts);
+            }
+            if (!newBody) return;
+            Body.setAngle(newBody, b.angle);
+            if (b.plugin) newBody.plugin = JSON.parse(JSON.stringify(b.plugin));
+            if (!newBody.isSensor) {
+                Body.setVelocity(newBody, { x: 0, y: 0 });
+                Body.setAngularVelocity(newBody, 0);
+            }
+            Composite.add(world, newBody);
+            userBodies.push(newBody);
+            pushUndo({ type: 'add', target: newBody });
+
+            const allC = Composite.allConstraints(world);
+            for (let i = 0; i < allC.length; i++) {
+                const c = allC[i];
+                if (c === mouseConstraint.constraint) continue;
+                if (c.bodyA !== b && c.bodyB !== b) continue;
+                const cOpts = {
+                    stiffness: c.stiffness,
+                    damping: c.damping,
+                    render: { type: c.render && c.render.type }
+                };
+                if (c.plugin) cOpts.plugin = JSON.parse(JSON.stringify(c.plugin));
+                if (c.bodyA === b && c.bodyB === b) {
+                    cOpts.bodyA = newBody; cOpts.bodyB = newBody;
+                    cOpts.pointA = c.pointA; cOpts.pointB = c.pointB;
+                } else if (c.bodyA === b) {
+                    cOpts.bodyA = newBody; cOpts.pointA = c.pointA;
+                    if (!c.bodyB) {
+                        cOpts.pointB = { x: c.pointB.x + off.x, y: c.pointB.y + off.y };
+                    } else {
+                        cOpts.bodyB = c.bodyB; cOpts.pointB = c.pointB;
+                    }
+                } else {
+                    cOpts.bodyA = c.bodyA; cOpts.bodyB = newBody;
+                    cOpts.pointA = c.pointA; cOpts.pointB = c.pointB;
+                }
+                if (c.length != null) cOpts.length = c.length;
+                const newC = Constraint.create(cOpts);
+                Composite.add(world, newC);
+                userConstraints.push(newC);
+                pushUndo({ type: 'addConstraint', target: newC });
+            }
+
+            selectedBody = newBody;
+            showPropsPanel(newBody);
+        }
+
+        /* ══════════════════════════════
+           RESET TO BUILD POSITIONS
+           ══════════════════════════════ */
+        let buildState = null;
+
+        function saveBuildState() {
+            buildState = userBodies.map(b => ({
+                x: b.position.x, y: b.position.y,
+                angle: b.angle, isStatic: b.isStatic
+            }));
+        }
+
+        function resetToBuildState() {
+            if (!buildState || mode !== 'build') return;
+            for (let i = 0; i < userBodies.length && i < buildState.length; i++) {
+                Body.setPosition(userBodies[i], { x: buildState[i].x, y: buildState[i].y });
+                Body.setAngle(userBodies[i], buildState[i].angle);
+                Body.setVelocity(userBodies[i], { x: 0, y: 0 });
+                Body.setAngularVelocity(userBodies[i], 0);
+            }
+            freezeAll();
+            if (selectedBody) updatePropsPanel(selectedBody);
+        }
+
+        function syncResetBtn() {
+            document.getElementById('resetBtn').disabled = !buildState || mode !== 'build';
+        }
+
+        /* ══════════════════════════════
+           INIT & BOUNDARIES
+           ══════════════════════════════ */
+        function makeBoundaries() {
+            const w = WORLD_W, h = WORLD_H;
+            ground = Bodies.rectangle(w / 2, h + BT / 2 - 2, w + BT * 2, BT, { isStatic: true, label: 'boundary' });
+            leftWall = Bodies.rectangle(-BT / 2 + 2, h / 2, BT, h + BT * 2, { isStatic: true, label: 'boundary' });
+            rightWall = Bodies.rectangle(w + BT / 2 - 2, h / 2, BT, h + BT * 2, { isStatic: true, label: 'boundary' });
+            ceiling = Bodies.rectangle(w / 2, -BT / 2 + 2, w + BT * 2, BT, { isStatic: true, label: 'boundary' });
+            return [ground, leftWall, rightWall, ceiling];
+        }
+
+        function rebuildBoundaries() {
+            [ground, leftWall, rightWall, ceiling].forEach(w => {
+                if (w) Composite.remove(world, w);
+            });
+            Composite.add(world, makeBoundaries());
+        }
+
+        function fitCamera() {
+            const pad = 80;
+            const zx = canvas.width / (WORLD_W + pad);
+            const zy = canvas.height / (WORLD_H + pad);
+            camera.zoom = Math.min(zx, zy);
+            camera.x = canvas.width / 2 - (WORLD_W / 2) * camera.zoom;
+            camera.y = canvas.height / 2 - (WORLD_H / 2) * camera.zoom;
+        }
+        function resize() {
+            const r = container.getBoundingClientRect();
+            canvas.width = r.width;
+            canvas.height = r.height;
+            mouse.element.width = r.width;
+            mouse.element.height = r.height;
+        }
+        resize();
+        rebuildBoundaries();
+        fitCamera();
+        window.addEventListener('resize', resize);
+
+        function freezeAll() {
+            Composite.allBodies(world).forEach(b => {
+                if (!b.isStatic) {
+                    Body.setVelocity(b, { x: 0, y: 0 });
+                    Body.setAngularVelocity(b, 0);
+                }
+            });
+        }
+
+        function getMousePos(e) {
+            const r = canvas.getBoundingClientRect();
+            let x = (e.clientX - r.left - camera.x) / camera.zoom;
+            let y = (e.clientY - r.top - camera.y) / camera.zoom;
+            if (gridSnap && mode === 'build' && (dragTools.includes(currentTool) || (currentTool === 'select' && selectedBody && isMouseDown))) {
+                const snapped = snapToGrid(x, y);
+                x = snapped.x;
+                y = snapped.y;
+            }
+            return { x, y };
+        }
+
+        function getAnyUserBody(x, y) {
+            const found = Query.point(Composite.allBodies(world), { x, y });
+            return found.length > 0 && found[0].label !== 'boundary' ? found[0] : null;
+        }
+
+        function bodyShapeKind(body) {
+            if (body.circleRadius) return 'circle';
+            const v = body.vertices;
+            if (v.length === 4) {
+                const dx1 = v[0].x - v[1].x, dy1 = v[0].y - v[1].y;
+                const dx2 = v[1].x - v[2].x, dy2 = v[1].y - v[2].y;
+                const dot = Math.abs(dx1 * dx2 + dy1 * dy2);
+                const cross = Math.abs(dx1 * dy2 - dy1 * dx2);
+                if (cross > 0.001 && dot / cross < 0.15) return 'rectangle';
+            }
+            return 'polygon';
+        }
+
+        function bodyTypeLabel(body) {
+            if (body.label === 'ropeLink') return 'Rope Link';
+            if (body.isSensor) return 'Sensor Zone';
+            if (body.circleRadius) return 'Circle';
+            const v = body.vertices;
+            if (v.length === 4) return bodyShapeKind(body) === 'rectangle' ? 'Rectangle' : 'Quad';
+            return v.length + '-gon';
+        }
+
+        function getBodyRadius(body) {
+            if (body.circleRadius) return body.circleRadius;
+            const v = body.vertices, cx = body.position.x, cy = body.position.y;
+            return Math.sqrt((v[0].x - cx) ** 2 + (v[0].y - cy) ** 2);
+        }
+
+        function getBodyWidth(body) {
+            const v = body.vertices;
+            return Math.sqrt((v[1].x - v[0].x) ** 2 + (v[1].y - v[0].y) ** 2);
+        }
+
+        function getBodyHeight(body) {
+            const v = body.vertices;
+            return Math.sqrt((v[2].x - v[1].x) ** 2 + (v[2].y - v[1].y) ** 2);
+        }
+
+        /* ═════════════════════════════════════════════════════════
+           BUG FIX #4: Extracted core resize logic so it can be
+           called with or without pushing an undo action.
+           ═════════════════════════════════════════════════════════ */
+        function doReplaceBodySize(oldBody, opts) {
+            const pos = { x: oldBody.position.x, y: oldBody.position.y };
+            const angle = oldBody.angle, isStatic = oldBody.isStatic;
+            const friction = oldBody.friction, frictionAir = oldBody.frictionAir;
+            const restitution = oldBody.restitution, density = oldBody.density;
+            const color = oldBody.render && oldBody.render.fillStyle ? oldBody.render.fillStyle : '#ccc';
+            const kind = bodyShapeKind(oldBody), newSides = opts.sides || null;
+            let newBody = null;
+
+            if (kind === 'circle' && !newSides) {
+                newBody = Bodies.circle(pos.x, pos.y, Math.max(5, opts.radius || oldBody.circleRadius), { isStatic, friction, frictionAir, restitution, density, render: { fillStyle: color } });
+            } else if (kind === 'rectangle' && !newSides) {
+                newBody = Bodies.rectangle(pos.x, pos.y, Math.max(10, opts.width || getBodyWidth(oldBody)), Math.max(10, opts.height || getBodyHeight(oldBody)), { isStatic, friction, frictionAir, restitution, density, render: { fillStyle: color } });
+            } else {
+                let sides = newSides || (kind === 'circle' ? 8 : oldBody.vertices.length);
+                const r = Math.max(5, opts.radius || getBodyRadius(oldBody));
+                newBody = Bodies.polygon(pos.x, pos.y, sides, r, { isStatic, friction, frictionAir, restitution, density, render: { fillStyle: color } });
+            }
+            if (!newBody) return null;
+            Body.setAngle(newBody, angle);
+
+            const allC = Composite.allConstraints(world);
+            for (let i = 0; i < allC.length; i++) {
+                const c = allC[i];
+                if (c === mouseConstraint.constraint) continue;
+                if (c.bodyA === oldBody) c.bodyA = newBody;
+                if (c.bodyB === oldBody) c.bodyB = newBody;
+            }
+
+            const idx = userBodies.indexOf(oldBody);
+            if (idx > -1) userBodies[idx] = newBody;
+            Composite.remove(world, oldBody);
+            Composite.add(world, newBody);
+            if (selectedBody === oldBody) selectedBody = newBody;
+            Body.setVelocity(newBody, { x: 0, y: 0 });
+            Body.setAngularVelocity(newBody, 0);
+            return newBody;
+        }
+
+        /* Public wrapper: captures old state, delegates, pushes undo */
+        function replaceBodySize(oldBody, opts) {
+            const kind = bodyShapeKind(oldBody);
+            const oldSizeOpts = {};
+            if (kind === 'circle') {
+                oldSizeOpts.radius = oldBody.circleRadius;
+            } else if (kind === 'rectangle') {
+                oldSizeOpts.width = getBodyWidth(oldBody);
+                oldSizeOpts.height = getBodyHeight(oldBody);
+            } else {
+                oldSizeOpts.sides = oldBody.vertices.length;
+                oldSizeOpts.radius = getBodyRadius(oldBody);
+            }
+
+            const newBody = doReplaceBodySize(oldBody, opts);
+            if (newBody) {
+                pushUndo({ type: 'resize', target: newBody, oldSizeOpts, newSizeOpts: opts });
+            }
+            return newBody;
+        }
+
+        /* ══════════════════════════════
+           COLLISION SOUND EFFECTS
+           ══════════════════════════════ */
+        function playCollisionSound(collision) {
+            if (!soundEnabled || !audioCtx) return;
+            const now = performance.now();
+            if (now - lastSoundTime < 30) return;
+
+            const { bodyA, bodyB } = collision;
+            if (bodyA.label === 'boundary' && bodyB.label === 'boundary') return;
+
+            const relVelX = bodyA.velocity.x - bodyB.velocity.x;
+            const relVelY = bodyA.velocity.y - bodyB.velocity.y;
+            const relSpeed = Math.sqrt(relVelX * relVelX + relVelY * relVelY);
+
+            if (relSpeed < 1) return;
+
+            const vol = Math.min(1, relSpeed / 15) * soundVolume;
+            if (vol < 0.01) return;
+
+            const mass = (bodyA.mass + bodyB.mass);
+            const freq = Math.max(80, Math.min(800, 400 - mass * 20));
+
+            const audioNow = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, audioNow);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioNow + 0.1);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(freq * 3, audioNow);
+
+            gain.gain.setValueAtTime(vol * 0.5, audioNow);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioNow + 0.12);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(audioNow);
+            osc.stop(audioNow + 0.15);
+
+            lastSoundTime = now;
+        }
+
+        /* ══════════════════════════════
+           MOTOR LOGIC
+           ══════════════════════════════ */
+        function applyMotors() {
+            userConstraints.forEach(c => {
+                if (c.plugin && c.plugin.type === 'motor' && c.bodyA) {
+                    Body.setAngularVelocity(c.bodyA, c.plugin.speed);
+                }
+            });
+        }
+
+        /* ══════════════════════════════
+           ROPE / CHAIN CREATION
+           ══════════════════════════════ */
+        function createChain(bodyA, bodyB, pointB) {
+            const ax = bodyA.position.x, ay = bodyA.position.y;
+            const bx = pointB.x, by = pointB.y;
+            const dx = bx - ax, dy = by - ay;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const numLinks = Math.max(3, Math.floor(dist / 20));
+
+            const chainBodies = [];
+            const chainConstraints = [];
+
+            for (let i = 1; i < numLinks; i++) {
+                const t = i / numLinks;
+                const x = ax + dx * t, y = ay + dy * t;
+                const link = Bodies.circle(x, y, 5, {
+                    isStatic: false,
+                    friction: 0.3,
+                    frictionAir: 0.02,
+                    density: 0.002,
+                    render: { fillStyle: '#95a5a6' }
+                });
+                link.label = 'ropeLink';
+                chainBodies.push(link);
+                Composite.add(world, link);
+                userBodies.push(link);
+            }
+
+            if (chainBodies.length === 0) return;
+
+            const firstLink = chainBodies[0];
+            const c1 = Constraint.create({
+                bodyA: bodyA,
+                bodyB: firstLink,
+                stiffness: 0.8,
+                damping: 0.05,
+                render: { type: 'rope' }
+            });
+            chainConstraints.push(c1);
+            Composite.add(world, c1);
+            userConstraints.push(c1);
+
+            for (let i = 0; i < chainBodies.length - 1; i++) {
+                const c = Constraint.create({
+                    bodyA: chainBodies[i],
+                    bodyB: chainBodies[i + 1],
+                    stiffness: 0.8,
+                    damping: 0.05,
+                    render: { type: 'rope' }
+                });
+                chainConstraints.push(c);
+                Composite.add(world, c);
+                userConstraints.push(c);
+            }
+
+            const lastLink = chainBodies[chainBodies.length - 1];
+            if (bodyB) {
+                const cLast = Constraint.create({
+                    bodyA: lastLink,
+                    bodyB: bodyB,
+                    stiffness: 0.8,
+                    damping: 0.05,
+                    render: { type: 'rope' }
+                });
+                chainConstraints.push(cLast);
+                Composite.add(world, cLast);
+                userConstraints.push(cLast);
+            } else {
+                const cLast = Constraint.create({
+                    bodyA: lastLink,
+                    pointB: { x: bx, y: by },
+                    stiffness: 0.8,
+                    damping: 0.05,
+                    render: { type: 'rope' }
+                });
+                chainConstraints.push(cLast);
+                Composite.add(world, cLast);
+                userConstraints.push(cLast);
+            }
+
+            pushUndo({ type: 'addChain', bodies: chainBodies, constraints: chainConstraints });
+        }
+
+        /* ══════════════════════════════
+           SENSOR ZONES
+           ══════════════════════════════ */
+        const activeOverlaps = new Map();
+        const sensorPropsPanel = document.getElementById('sensorPropsPanel');
+        const sensorDivider = document.getElementById('sensorDivider');
+        const sensorActionSelect = document.getElementById('sensorActionSelect');
+
+        function updateSensorPanel() {
+            if (selectedBody && selectedBody.label === 'Sensor Zone') {
+                sensorPropsPanel.style.display = 'block';
+                sensorDivider.style.display = 'block';
+                sensorActionSelect.value = selectedBody.plugin ? selectedBody.plugin.action : 'forceUp';
+            } else {
+                sensorPropsPanel.style.display = 'none';
+                sensorDivider.style.display = 'none';
+            }
+        }
+
+        sensorActionSelect.addEventListener('change', (e) => {
+            if (selectedBody && selectedBody.label === 'Sensor Zone') {
+                if (!selectedBody.plugin) selectedBody.plugin = {};
+                selectedBody.plugin.action = e.target.value;
+            }
+        });
+
+        Events.on(engine, 'collisionStart', (event) => {
+            event.pairs.forEach(pair => {
+                /* Collision sound effects */
+                playCollisionSound(pair);
+
+                const { bodyA, bodyB } = pair;
+                let sensor, dyn;
+                if (bodyA.isSensor && !bodyB.isSensor) { sensor = bodyA; dyn = bodyB; }
+                else if (bodyB.isSensor && !bodyA.isSensor) { sensor = bodyB; dyn = bodyA; }
+                else return;
+                if (dyn.label === 'boundary') return;
+
+                const key = sensor.id + '-' + dyn.id;
+                activeOverlaps.set(key, { sensor, body: dyn });
+
+                if (sensor.plugin && sensor.plugin.type === 'sensor') {
+                    if (sensor.plugin.action === 'toggleStatic') {
+                        Body.setStatic(dyn, !dyn.isStatic);
+                    } else if (sensor.plugin.action === 'delete') {
+                        if (selectedBody === dyn) { selectedBody = null; showPropsPanel(null); }
+                        removeBodyWithUndo(dyn);
+                        activeOverlaps.delete(key);
+                    }
+                }
+            });
+        });
+
+        Events.on(engine, 'collisionEnd', (event) => {
+            event.pairs.forEach(pair => {
+                const { bodyA, bodyB } = pair;
+                let sensor, dyn;
+                if (bodyA.isSensor && !bodyB.isSensor) { sensor = bodyA; dyn = bodyB; }
+                else if (bodyB.isSensor && !bodyA.isSensor) { sensor = bodyB; dyn = bodyA; }
+                else return;
+                activeOverlaps.delete(sensor.id + '-' + dyn.id);
+            });
+        });
+
+        function applySensorForces() {
+            activeOverlaps.forEach(o => {
+                if (o.body.label === 'boundary' || !o.sensor.plugin) return;
+                const action = o.sensor.plugin.action;
+                if (action === 'forceUp') {
+                    Body.applyForce(o.body, o.body.position, { x: 0, y: -0.05 });
+                } else if (action === 'zeroGravity') {
+                    Body.applyForce(o.body, o.body.position, {
+                        x: -(o.body.mass * engine.gravity.x * engine.gravity.scale),
+                        y: -(o.body.mass * engine.gravity.y * engine.gravity.scale)
+                    });
+                }
+            });
+        }
+
+        /* ══════════════════════════════
+           PROPERTIES PANEL
+           ══════════════════════════════ */
+        const propsPanel = document.getElementById('propsPanel');
+        const propTypeLabel = document.getElementById('propTypeLabel');
+        const staticToggle = document.getElementById('staticToggle');
+        const frictionSlider = document.getElementById('frictionSlider');
+        const frictionVal = document.getElementById('frictionVal');
+        const frictionAirSlider = document.getElementById('frictionAirSlider');
+        const frictionAirVal = document.getElementById('frictionAirVal');
+        const restitutionSlider = document.getElementById('restitutionSlider');
+        const restitutionVal = document.getElementById('restitutionVal');
+        const densitySlider = document.getElementById('densitySlider');
+        const densityVal = document.getElementById('densityVal');
+        const angleSlider = document.getElementById('angleSlider');
+        const angleVal = document.getElementById('angleVal');
+        const colorSwatchesContainer = document.getElementById('colorSwatches');
+        const deleteSelectedBtn = document.getElementById('deleteSelected');
+        const sizeRadius = document.getElementById('sizeRadius');
+        const sizeRect = document.getElementById('sizeRect');
+        const sidesGroup = document.getElementById('sidesGroup');
+        const radiusSlider = document.getElementById('radiusSlider');
+        const radiusVal = document.getElementById('radiusVal');
+        const sidesSlider = document.getElementById('sidesSlider');
+        const sidesVal = document.getElementById('sidesVal');
+        const widthSlider = document.getElementById('widthSlider');
+        const widthVal = document.getElementById('widthVal');
+        const heightSlider = document.getElementById('heightSlider');
+        const heightVal = document.getElementById('heightVal');
+        const motorPropsGroup = document.getElementById('motorPropsGroup');
+        const motorSpeedSlider = document.getElementById('motorSpeedSlider');
+        const motorSpeedVal = document.getElementById('motorSpeedVal');
+
+        SHAPE_COLORS.forEach(color => {
+            const swatch = document.createElement('div');
+            swatch.className = 'color-swatch';
+            swatch.style.background = color;
+            swatch.dataset.color = color;
+            swatch.addEventListener('click', () => {
+                if (!selectedBody) return;
+                selectedBody.render.fillStyle = color;
+                updateSwatchHighlight(color);
+            });
+            colorSwatchesContainer.appendChild(swatch);
+        });
+
+        function updateSwatchHighlight(c) {
+            colorSwatchesContainer.querySelectorAll('.color-swatch').forEach(s => {
+                s.classList.toggle('active-swatch', s.dataset.color === c);
+            });
+        }
+
+        function updateMotorPanel() {
+            if (!selectedBody) { motorPropsGroup.classList.add('motor-hidden'); return; }
+            const motorC = userConstraints.find(c => c.plugin && c.plugin.type === 'motor' && c.bodyA === selectedBody);
+            if (motorC) {
+                motorPropsGroup.classList.remove('motor-hidden');
+                motorSpeedSlider.value = motorC.plugin.speed;
+                motorSpeedVal.textContent = motorC.plugin.speed.toFixed(3);
+            } else {
+                motorPropsGroup.classList.add('motor-hidden');
+            }
+        }
+
+        function showPropsPanel(b) {
+            if (!b) { propsPanel.classList.add('hidden-panel'); updateSensorPanel(); updateMotorPanel(); updateFilterGroupUI(); updateBodyNameUI(); return; }
+            if (b.isSensor) { propsPanel.classList.add('hidden-panel'); updateSensorPanel(); updateMotorPanel(); updateFilterGroupUI(); updateBodyNameUI(); return; }
+            propsPanel.classList.remove('hidden-panel');
+            updateSensorPanel();
+            updateMotorPanel();
+            updateFilterGroupUI();
+            updateBodyNameUI();
+            updatePropsPanel(b);
+        }
+
+        function updatePropsPanel(body) {
+            if (!body || body.label === 'boundary' || body.isSensor) { showPropsPanel(null); return; }
+            updatingSliders = true;
+            const kind = bodyShapeKind(body);
+            let label = bodyTypeLabel(body) + (body.isStatic ? ' (static)' : '');
+            if (kind === 'polygon') label = body.vertices.length + '-gon' + (body.isStatic ? ' (static)' : '');
+            propTypeLabel.textContent = label;
+            const isR = (kind === 'rectangle');
+            sizeRadius.classList.toggle('size-hidden', isR);
+            sizeRect.classList.toggle('size-hidden', !isR);
+            if (!isR) {
+                radiusSlider.value = Math.round(getBodyRadius(body));
+                radiusVal.textContent = Math.round(getBodyRadius(body));
+                const showS = (kind === 'polygon');
+                sidesGroup.style.display = showS ? '' : 'none';
+                if (showS) { sidesSlider.value = body.vertices.length; sidesVal.textContent = body.vertices.length; }
+            }
+            if (isR) {
+                widthSlider.value = Math.round(getBodyWidth(body));
+                widthVal.textContent = Math.round(getBodyWidth(body));
+                heightSlider.value = Math.round(getBodyHeight(body));
+                heightVal.textContent = Math.round(getBodyHeight(body));
+            }
+            staticToggle.classList.toggle('on', body.isStatic);
+            frictionSlider.value = body.friction;
+            frictionVal.textContent = body.friction.toFixed(2);
+            frictionAirSlider.value = body.frictionAir;
+            frictionAirVal.textContent = body.frictionAir.toFixed(3);
+            restitutionSlider.value = body.restitution;
+            restitutionVal.textContent = body.restitution.toFixed(2);
+            densitySlider.value = body.density;
+            densityVal.textContent = body.density.toFixed(4);
+            let deg = ((body.angle * 180 / Math.PI) % 360 + 360) % 360;
+            angleSlider.value = deg;
+            angleVal.innerHTML = Math.round(deg) + '&deg;';
+            updateSwatchHighlight(body.render && body.render.fillStyle ? body.render.fillStyle : '#ccc');
+            updatingSliders = false;
+            updateMotorPanel();
+            updateFilterGroupUI();
+            updateBodyNameUI();
+        }
+
+        let sizeDebounce = null;
+        function scheduleSizeChange(fn) { clearTimeout(sizeDebounce); sizeDebounce = setTimeout(fn, 16); }
+        radiusSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; const v = parseInt(radiusSlider.value); radiusVal.textContent = v; scheduleSizeChange(() => replaceBodySize(selectedBody, { radius: v })); });
+        sidesSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; const v = parseInt(sidesSlider.value); sidesVal.textContent = v; scheduleSizeChange(() => replaceBodySize(selectedBody, { sides: v })); });
+        widthSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; const v = parseInt(widthSlider.value); widthVal.textContent = v; scheduleSizeChange(() => replaceBodySize(selectedBody, { width: v })); });
+        heightSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; const v = parseInt(heightSlider.value); heightVal.textContent = v; scheduleSizeChange(() => replaceBodySize(selectedBody, { height: v })); });
+        staticToggle.addEventListener('click', () => { if (!selectedBody) return; Body.setStatic(selectedBody, !selectedBody.isStatic); updatePropsPanel(selectedBody); });
+        frictionSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; selectedBody.friction = parseFloat(frictionSlider.value); frictionVal.textContent = parseFloat(frictionSlider.value).toFixed(2); });
+        frictionAirSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; selectedBody.frictionAir = parseFloat(frictionAirSlider.value); frictionAirVal.textContent = parseFloat(frictionAirSlider.value).toFixed(3); });
+        restitutionSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; selectedBody.restitution = parseFloat(restitutionSlider.value); restitutionVal.textContent = parseFloat(restitutionSlider.value).toFixed(2); });
+        densitySlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; selectedBody.density = parseFloat(densitySlider.value); densityVal.textContent = parseFloat(densitySlider.value).toFixed(4); });
+        angleSlider.addEventListener('input', () => { if (updatingSliders || !selectedBody) return; const d = parseFloat(angleSlider.value); Body.setAngle(selectedBody, d * Math.PI / 180); angleVal.innerHTML = Math.round(d) + '&deg;'; });
+        motorSpeedSlider.addEventListener('input', () => {
+            if (!selectedBody) return;
+            const speed = parseFloat(motorSpeedSlider.value);
+            motorSpeedVal.textContent = speed.toFixed(3);
+            const motorC = userConstraints.find(c => c.plugin && c.plugin.type === 'motor' && c.bodyA === selectedBody);
+            if (motorC) motorC.plugin.speed = speed;
+        });
+        deleteSelectedBtn.addEventListener('click', () => { if (!selectedBody || mode !== 'build') return; removeBodyWithUndo(selectedBody); selectedBody = null; showPropsPanel(null); });
+
+        /* ══════════════════════════════
+           WORLD SETTINGS
+           ══════════════════════════════ */
+        const gravityYSlider = document.getElementById('gravityYSlider'), gravityYVal = document.getElementById('gravityYVal');
+        const gravityXSlider = document.getElementById('gravityXSlider'), gravityXVal = document.getElementById('gravityXVal');
+        const timeScaleSlider = document.getElementById('timeScaleSlider'), timeScaleVal = document.getElementById('timeScaleVal');
+        const velIterInput = document.getElementById('velIterInput'), posIterInput = document.getElementById('posIterInput');
+        const sleepToggle = document.getElementById('sleepToggle'), velocityToggle = document.getElementById('velocityToggle');
+        const angleToggle = document.getElementById('angleToggle'), boundsToggle = document.getElementById('boundsToggle');
+        const bgOpacitySlider = document.getElementById('bgOpacitySlider'), bgOpacityVal = document.getElementById('bgOpacityVal');
+        const soundToggle = document.getElementById('soundToggle');
+        const soundVolumeSlider = document.getElementById('soundVolumeSlider'), soundVolumeVal = document.getElementById('soundVolumeVal');
+        const snapIndicator = document.getElementById('snapIndicator');
+
+        gravityYSlider.addEventListener('input', () => { engine.gravity.y = parseFloat(gravityYSlider.value); gravityYVal.textContent = parseFloat(gravityYSlider.value).toFixed(1); });
+        gravityXSlider.addEventListener('input', () => { engine.gravity.x = parseFloat(gravityXSlider.value); gravityXVal.textContent = parseFloat(gravityXSlider.value).toFixed(1); });
+        timeScaleSlider.addEventListener('input', () => { if (mode !== 'play') return; engine.timing.timeScale = parseFloat(timeScaleSlider.value); timeScaleVal.textContent = parseFloat(timeScaleSlider.value).toFixed(1); });
+        velIterInput.addEventListener('input', () => { let v = parseInt(velIterInput.value); if (isNaN(v)) v = 6; v = Math.max(1, Math.min(20, v)); engine.velocityIterations = v; });
+        posIterInput.addEventListener('input', () => { let v = parseInt(posIterInput.value); if (isNaN(v)) v = 4; v = Math.max(1, Math.min(20, v)); engine.positionIterations = v; });
+        sleepToggle.addEventListener('click', () => { engine.enableSleeping = !engine.enableSleeping; sleepToggle.classList.toggle('on', engine.enableSleeping); });
+        velocityToggle.addEventListener('click', () => { showVelocity = !showVelocity; velocityToggle.classList.toggle('on', showVelocity); });
+        angleToggle.addEventListener('click', () => { showAngle = !showAngle; angleToggle.classList.toggle('on', showAngle); });
+        boundsToggle.addEventListener('click', () => { showBounds = !showBounds; boundsToggle.classList.toggle('on', showBounds); });
+        soundToggle.addEventListener('click', () => { soundEnabled = !soundEnabled; soundToggle.classList.toggle('on', soundEnabled); if (soundEnabled) ensureAudioCtx(); });
+        soundVolumeSlider.addEventListener('input', () => { soundVolume = parseFloat(soundVolumeSlider.value); soundVolumeVal.textContent = soundVolume.toFixed(2); });
+        bgOpacitySlider.addEventListener('input', () => { bgOpacity = parseFloat(bgOpacitySlider.value); bgOpacityVal.textContent = bgOpacity.toFixed(2); });
+
+        function toggleGridSnap() {
+            gridSnap = !gridSnap;
+            snapIndicator.style.opacity = gridSnap ? '1' : '0';
+        }
+
+        function syncTimeScaleUI() {
+            if (mode === 'play') {
+                timeScaleSlider.disabled = false;
+                timeScaleSlider.value = engine.timing.timeScale;
+                timeScaleVal.textContent = engine.timing.timeScale.toFixed(1);
+            } else {
+                timeScaleSlider.disabled = true;
+                timeScaleVal.textContent = '\u2014';
+            }
+        }
+
+        /* ══════════════════════════════
+           DRAWING
+           ══════════════════════════════ */
+        function drawBackground() {
+            ctx.globalAlpha = bgOpacity;
+            const grd = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.45, 0, canvas.width * 0.5, canvas.height * 0.45, Math.max(canvas.width, canvas.height) * 0.65);
+            grd.addColorStop(0, '#1f1f3a'); grd.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = grd; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
+        }
+        function drawGrid() {
+            if (bgOpacity <= 0) return;
+            ctx.globalAlpha = bgOpacity * 0.7;
+            const sp = 40;
+            const vL = -camera.x / camera.zoom - 100, vT = -camera.y / camera.zoom - 100;
+            const vR = vL + (canvas.width / camera.zoom) + 200, vB = vT + (canvas.height / camera.zoom) + 200;
+            const sX = Math.floor(vL / sp) * sp, sY = Math.floor(vT / sp) * sp;
+            ctx.strokeStyle = '#252545'; ctx.lineWidth = 0.5; ctx.beginPath();
+            for (let x = sX; x < vR; x += sp) { ctx.moveTo(x, vT); ctx.lineTo(x, vB); }
+            for (let y = sY; y < vB; y += sp) { ctx.moveTo(vL, y); ctx.lineTo(vR, y); }
+            ctx.stroke();
+            const sp5 = sp * 5, s5X = Math.floor(vL / sp5) * sp5, s5Y = Math.floor(vT / sp5) * sp5;
+            ctx.strokeStyle = '#2a2a50'; ctx.lineWidth = 0.8; ctx.beginPath();
+            for (let x = s5X; x < vR; x += sp5) { ctx.moveTo(x, vT); ctx.lineTo(x, vB); }
+            for (let y = s5Y; y < vB; y += sp5) { ctx.moveTo(vL, y); ctx.lineTo(vR, y); }
+            ctx.stroke(); ctx.globalAlpha = 1;
+        }
+        function drawGhost() {
+            if (!ghostParams || !isMouseDown) return;
+            const { tool, sx, sy, ex, ey } = ghostParams;
+            const dx = ex - sx, dy = ey - sy, dist = Math.sqrt(dx * dx + dy * dy);
+            ctx.save(); ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = (tool === 'sensor' || tool === 'platform') ? 'rgba(139,92,246,.5)' : 'rgba(245,158,11,.5)';
+            ctx.lineWidth = 1.5;
+            if (tool === 'circle') { ctx.beginPath(); ctx.arc(sx, sy, dist, 0, Math.PI * 2); ctx.stroke(); }
+            else if (tool === 'rectangle' || tool === 'platform' || tool === 'sensor') { ctx.strokeRect(sx, sy, dx, dy); }
+            else if (tool === 'triangle' || tool === 'hexagon') {
+                const sides = tool === 'triangle' ? 3 : 6, cx = (sx + ex) / 2, cy = (sy + ey) / 2, r = dist / 2;
+                ctx.beginPath();
+                for (let i = 0; i < sides; i++) { const a = (i * 2 * Math.PI / sides) - (sides === 3 ? Math.PI / 2 : Math.PI / 6); const px = cx + r * Math.cos(a), py = cy + r * Math.sin(a); i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+                ctx.closePath(); ctx.stroke();
+            }
+            ctx.restore();
+        }
+        function drawConstraintPreview() {
+            if (constraintStep !== 2 || !constraintBodyA) return;
+            ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = 'rgba(245,158,11,.35)'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(constraintBodyA.position.x, constraintBodyA.position.y); ctx.lineTo(mouseX, mouseY); ctx.stroke();
+            ctx.setLineDash([]); const v = constraintBodyA.vertices;
+            ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y);
+            ctx.closePath(); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+        }
+        function drawSensors() {
+            const ac = { forceUp: '#22d3ee', delete: '#f87171', toggleStatic: '#facc15', zeroGravity: '#a78bfa' };
+            for (let i = 0; i < userBodies.length; i++) {
+                const body = userBodies[i]; if (!body.isSensor) continue;
+                const action = body.plugin ? body.plugin.action : 'forceUp', color = ac[action] || '#ccc', v = body.vertices;
+                ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.8;
+                ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y);
+                ctx.closePath(); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = color;
+                ctx.font = '10px "Space Grotesk",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(action.replace(/([A-Z])/g, ' $1').trim(), body.position.x, body.position.y); ctx.restore();
+            }
+        }
+        function drawBodies() {
+            const all = Composite.allBodies(world);
+            for (let i = 0; i < all.length; i++) {
+                const body = all[i], verts = body.vertices; if (body.isSensor) continue;
+                ctx.beginPath(); ctx.moveTo(verts[0].x, verts[0].y); for (let j = 1; j < verts.length; j++) ctx.lineTo(verts[j].x, verts[j].y); ctx.closePath();
+                if (body.label === 'boundary') { ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke(); }
+                else if (body.isStatic) { const f = body.render?.fillStyle || '#888'; ctx.globalAlpha = .12; ctx.fillStyle = f; ctx.fill(); ctx.globalAlpha = .55; ctx.strokeStyle = f; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1; }
+                else { const f = body.render?.fillStyle || '#ccc'; ctx.globalAlpha = .3; ctx.fillStyle = f; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = f; ctx.lineWidth = 1.5; ctx.stroke(); }
+                if (body === hoveredBody && body.label !== 'boundary') { ctx.globalAlpha = .15; ctx.fillStyle = '#f87171'; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2; ctx.stroke(); }
+            }
+            ctx.globalAlpha = 1;
+        }
+        function drawSelectedGlow() {
+            if (!selectedBody) return; const v = selectedBody.vertices; ctx.save();
+            ctx.shadowColor = selectedBody.isSensor ? '#a78bfa' : '#3498db'; ctx.shadowBlur = 12;
+            ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y); for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y);
+            ctx.closePath(); ctx.strokeStyle = selectedBody.isSensor ? '#a78bfa' : '#3498db'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.stroke(); ctx.restore();
+        }
+        function drawVelocityVectors() {
+            if (!showVelocity) return; ctx.save(); ctx.strokeStyle = 'rgba(239,68,68,0.7)'; ctx.lineWidth = 1.5;
+            Composite.allBodies(world).forEach(b => {
+                if (b.isStatic || b.label === 'boundary' || b.isSensor) return;
+                const s = Math.sqrt(b.velocity.x ** 2 + b.velocity.y ** 2); if (s < .1) return;
+                const sc = 5; ctx.beginPath(); ctx.moveTo(b.position.x, b.position.y); ctx.lineTo(b.position.x + b.velocity.x * sc, b.position.y + b.velocity.y * sc); ctx.stroke();
+                const a = Math.atan2(b.velocity.y, b.velocity.x), tx = b.position.x + b.velocity.x * sc, ty = b.position.y + b.velocity.y * sc;
+                ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - 6 * Math.cos(a - .4), ty - 6 * Math.sin(a - .4));
+                ctx.moveTo(tx, ty); ctx.lineTo(tx - 6 * Math.cos(a + .4), ty - 6 * Math.sin(a + .4)); ctx.stroke();
+            }); ctx.restore();
+        }
+        function drawAngleIndicators() {
+            if (!showAngle) return; ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2;
+            Composite.allBodies(world).forEach(b => {
+                if (b.label === 'boundary' || b.isSensor) return;
+                const l = b.circleRadius ? b.circleRadius : getBodyRadius(b);
+                ctx.beginPath(); ctx.moveTo(b.position.x, b.position.y); ctx.lineTo(b.position.x + Math.cos(b.angle) * l * .8, b.position.y + Math.sin(b.angle) * l * .8); ctx.stroke();
+            }); ctx.restore();
+        }
+        function drawCollisionBounds() {
+            if (!showBounds) return; ctx.save();
+            Composite.allBodies(world).forEach(b => {
+                if (b.label === 'boundary') return; const bn = b.bounds;
+                ctx.fillStyle = 'rgba(59,130,246,0.04)'; ctx.fillRect(bn.min.x, bn.min.y, bn.max.x - bn.min.x, bn.max.y - bn.min.y);
+                ctx.strokeStyle = 'rgba(59,130,246,0.2)'; ctx.lineWidth = 1; ctx.strokeRect(bn.min.x, bn.min.y, bn.max.x - bn.min.x, bn.max.y - bn.min.y);
+            }); ctx.restore();
+        }
+        function drawMouseConstraintDrag() {
+            if (mode !== 'play') return; const mc = mouseConstraint; if (mc.body) {
+                ctx.save(); ctx.beginPath(); ctx.moveTo(mc.body.position.x, mc.body.position.y); ctx.lineTo(mc.mouse.position.x, mc.mouse.position.y);
+                ctx.strokeStyle = 'rgba(52,152,219,.35)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+            }
+        }
+        function drawSpringLine(x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1, dist = Math.sqrt(dx * dx + dy * dy); if (dist < 2) return;
+            const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
+            const coils = Math.max(4, Math.min(14, Math.floor(dist / 12))), amp = Math.min(7, dist * .05), lead = Math.min(15, dist * .08);
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 + ux * lead, y1 + uy * lead);
+            const sLen = dist - 2 * lead, segs = coils * 2;
+            for (let i = 0; i < segs; i++) { const t = lead + sLen * (i + .5) / segs, side = (i % 2 === 0) ? 1 : -1; ctx.lineTo(x1 + ux * t + px * amp * side, y1 + uy * t + py * amp * side); }
+            ctx.lineTo(x2 - ux * lead, y2 - uy * lead); ctx.lineTo(x2, y2); ctx.strokeStyle = '#e67e22'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+        function drawConstraints() {
+            const all = Composite.allConstraints(world);
+            for (let i = 0; i < all.length; i++) {
+                const c = all[i]; if (c === mouseConstraint.constraint) continue;
+                let wA, wB;
+                if (c.bodyA) wA = { x: c.bodyA.position.x + (c.pointA ? c.pointA.x : 0), y: c.bodyA.position.y + (c.pointA ? c.pointA.y : 0) };
+                else if (c.pointA) wA = { x: c.pointA.x, y: c.pointA.y };
+                if (c.bodyB) wB = { x: c.bodyB.position.x + (c.pointB ? c.pointB.x : 0), y: c.bodyB.position.y + (c.pointB ? c.pointB.y : 0) };
+                else if (c.pointB) wB = { x: c.pointB.x, y: c.pointB.y };
+                if (!wA || !wB) continue;
+                const type = c.render && c.render.type;
+                if (type === 'spring') drawSpringLine(wA.x, wA.y, wB.x, wB.y);
+                else { ctx.beginPath(); ctx.moveTo(wA.x, wA.y); ctx.lineTo(wB.x, wB.y); ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1.5; ctx.stroke(); }
+                const dc = (type === 'spring' || type === 'pin' || type === 'motor') ? '#e67e22' : '#95a5a6'; ctx.fillStyle = dc;
+                ctx.beginPath(); ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2); ctx.fill();
+                if (type === 'pin' && !c.bodyB) { ctx.beginPath(); ctx.arc(wB.x, wB.y, 7, 0, Math.PI * 2); ctx.strokeStyle = '#e67e22'; ctx.lineWidth = 1.5; ctx.stroke(); }
+                if (type === 'motor') {
+                    /* Draw rotation arc arrow indicator */
+                    const speed = c.plugin && c.plugin.speed ? c.plugin.speed : 0.05;
+                    const ccw = speed < 0;
+                    ctx.beginPath();
+                    ctx.arc(wB.x, wB.y, 14, -Math.PI * 0.7, Math.PI * 0.4, ccw);
+                    ctx.strokeStyle = '#a78bfa';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                    const endAngle = ccw ? -Math.PI * 0.7 : Math.PI * 0.4;
+                    const r = 14;
+                    const tipX = wB.x + r * Math.cos(endAngle);
+                    const tipY = wB.y + r * Math.sin(endAngle);
+                    const tangentAngle = endAngle + (ccw ? -Math.PI / 2 : Math.PI / 2);
+                    ctx.beginPath();
+                    ctx.moveTo(tipX, tipY);
+                    ctx.lineTo(tipX - 6 * Math.cos(tangentAngle - 0.4), tipY - 6 * Math.sin(tangentAngle - 0.4));
+                    ctx.moveTo(tipX, tipY);
+                    ctx.lineTo(tipX - 6 * Math.cos(tangentAngle + 0.4), tipY - 6 * Math.sin(tangentAngle + 0.4));
+                    ctx.strokeStyle = '#a78bfa';
+                    ctx.stroke();
+                }
+            }
+        }
+        /* ══════════════════════════════
+           FREEHAND TOOL
+           ══════════════════════════════ */
+        function finalizeFreehand() {
+            if (freehandPoints.length < 3) { freehandPoints = []; return; }
+            const pts = freehandPoints;
+            freehandPoints = [];
+            let cx = 0, cy = 0;
+            pts.forEach(p => { cx += p.x; cy += p.y; });
+            cx /= pts.length; cy /= pts.length;
+            const simplified = [pts[0]];
+            for (let i = 1; i < pts.length; i++) {
+                const last = simplified[simplified.length - 1];
+                const dx = pts[i].x - last.x, dy = pts[i].y - last.y;
+                if (dx * dx + dy * dy > 25) simplified.push(pts[i]);
+            }
+            if (simplified.length < 3) return;
+            const color = randomColor();
+            const body = Bodies.fromVertices(cx, cy, [simplified], {
+                restitution: 0.3, friction: 0.15, frictionAir: 0.01, density: 0.001,
+                render: { fillStyle: color }
+            });
+            if (body) {
+                Body.setVelocity(body, { x: 0, y: 0 });
+                Body.setAngularVelocity(body, 0);
+                Composite.add(world, body);
+                userBodies.push(body);
+                pushUndo({ type: 'add', target: body });
+                /* Mirror copies for freehand */
+                const mirrorActions = [];
+                if (mirrorX) {
+                    const mx = WORLD_W - body.position.x;
+                    const mb = mirrorCloneBody(body, mx, body.position.y, -body.angle);
+                    if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+                }
+                if (mirrorY) {
+                    const my = WORLD_H - body.position.y;
+                    const mb = mirrorCloneBody(body, body.position.x, my, -body.angle);
+                    if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+                }
+                if (mirrorX && mirrorY) {
+                    const mx = WORLD_W - body.position.x, my = WORLD_H - body.position.y;
+                    const mb = mirrorCloneBody(body, mx, my, body.angle);
+                    if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+                }
+                if (mirrorActions.length > 0) pushUndo({ type: 'addMirror', bodies: mirrorActions });
+            }
+        }
+
+        /* ══════════════════════════════
+           MINIMAP
+           ══════════════════════════════ */
+        let minimapDragging = false;
+        function drawMinimap() {
+            if (!minimapVisible) { minimapContainer.style.display = 'none'; return; }
+            minimapContainer.style.display = '';
+            const mw = 180, mh = 180;
+            const pad = 10;
+            const scaleX = (mw - pad * 2) / WORLD_W, scaleY = (mh - pad * 2) / WORLD_H;
+            const sc = Math.min(scaleX, scaleY);
+            const ox = (mw - WORLD_W * sc) / 2, oy = (mh - WORLD_H * sc) / 2;
+            /* Background with gradient */
+            minimapCtx.clearRect(0, 0, mw, mh);
+            const bg = minimapCtx.createLinearGradient(0, 0, mw, mh);
+            bg.addColorStop(0, '#1a1a2e'); bg.addColorStop(1, '#16162a');
+            minimapCtx.fillStyle = bg; minimapCtx.fillRect(0, 0, mw, mh);
+            /* World area */
+            minimapCtx.fillStyle = 'rgba(37,37,69,.6)';
+            minimapCtx.fillRect(ox, oy, WORLD_W * sc, WORLD_H * sc);
+            minimapCtx.strokeStyle = '#3a3a5c'; minimapCtx.lineWidth = 1;
+            minimapCtx.strokeRect(ox, oy, WORLD_W * sc, WORLD_H * sc);
+            /* Mirror axes */
+            if (mirrorX) { minimapCtx.strokeStyle = 'rgba(96,165,250,.4)'; minimapCtx.lineWidth = 0.8; minimapCtx.beginPath(); minimapCtx.moveTo(ox + WORLD_W * sc / 2, oy); minimapCtx.lineTo(ox + WORLD_W * sc / 2, oy + WORLD_H * sc); minimapCtx.stroke(); }
+            if (mirrorY) { minimapCtx.strokeStyle = 'rgba(244,114,182,.4)'; minimapCtx.lineWidth = 0.8; minimapCtx.beginPath(); minimapCtx.moveTo(ox, oy + WORLD_H * sc / 2); minimapCtx.lineTo(ox + WORLD_W * sc, oy + WORLD_H * sc / 2); minimapCtx.stroke(); }
+            /* Constraints */
+            minimapCtx.strokeStyle = 'rgba(149,165,166,.25)'; minimapCtx.lineWidth = 0.5;
+            for (let i = 0; i < userConstraints.length; i++) {
+                const c = userConstraints[i];
+                let ax, ay, bx, by;
+                if (c.bodyA) { ax = ox + c.bodyA.position.x * sc; ay = oy + c.bodyA.position.y * sc; }
+                else if (c.pointA) { ax = ox + c.pointA.x * sc; ay = oy + c.pointA.y * sc; }
+                else continue;
+                if (c.bodyB) { bx = ox + c.bodyB.position.x * sc; by = oy + c.bodyB.position.y * sc; }
+                else if (c.pointB) { bx = ox + c.pointB.x * sc; by = oy + c.pointB.y * sc; }
+                else continue;
+                minimapCtx.beginPath(); minimapCtx.moveTo(ax, ay); minimapCtx.lineTo(bx, by); minimapCtx.stroke();
+            }
+            /* Bodies */
+            for (let i = 0; i < userBodies.length; i++) {
+                const b = userBodies[i];
+                const px = ox + b.position.x * sc, py = oy + b.position.y * sc;
+                const r = b.circleRadius ? b.circleRadius : getBodyRadius(b);
+                const dotR = Math.max(1.5, Math.min(3.5, r * sc));
+                if (b.isSensor) { minimapCtx.fillStyle = 'rgba(139,92,246,.6)'; }
+                else if (b.isStatic) { minimapCtx.fillStyle = 'rgba(245,158,11,.5)'; }
+                else { const c = b.render?.fillStyle || '#2ecc71'; minimapCtx.fillStyle = c; }
+                minimapCtx.beginPath(); minimapCtx.arc(px, py, dotR, 0, Math.PI * 2); minimapCtx.fill();
+            }
+            /* Viewport */
+            const vx = ox + (-camera.x / camera.zoom) * sc;
+            const vy = oy + (-camera.y / camera.zoom) * sc;
+            const vw = (canvas.width / camera.zoom) * sc;
+            const vh = (canvas.height / camera.zoom) * sc;
+            minimapCtx.fillStyle = 'rgba(255,255,255,.06)';
+            minimapCtx.fillRect(vx, vy, vw, vh);
+            minimapCtx.strokeStyle = 'rgba(255,255,255,.45)'; minimapCtx.lineWidth = 1;
+            minimapCtx.strokeRect(vx, vy, vw, vh);
+            /* Body count */
+            minimapCtx.font = '9px "JetBrains Mono",monospace'; minimapCtx.fillStyle = 'rgba(255,255,255,.3)'; minimapCtx.textAlign = 'right';
+            minimapCtx.fillText(userBodies.length + ' bodies', mw - 6, mh - 5);
+        }
+
+        minimapCanvas.addEventListener('mousedown', e => {
+            e.stopPropagation(); minimapDragging = true;
+            navigateMinimap(e);
+        });
+        window.addEventListener('mousemove', e => { if (minimapDragging) navigateMinimap(e); });
+        window.addEventListener('mouseup', () => { minimapDragging = false; });
+        minimapCanvas.addEventListener('contextmenu', e => e.stopPropagation());
+        function navigateMinimap(e) {
+            const r = minimapCanvas.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            const mw = 180, mh = 180, pad = 10;
+            const scaleX = (mw - pad * 2) / WORLD_W, scaleY = (mh - pad * 2) / WORLD_H;
+            const sc = Math.min(scaleX, scaleY);
+            const ox = (mw - WORLD_W * sc) / 2, oy = (mh - WORLD_H * sc) / 2;
+            const worldX = (mx - ox) / sc, worldY = (my - oy) / sc;
+            camera.x = canvas.width / 2 - worldX * camera.zoom;
+            camera.y = canvas.height / 2 - worldY * camera.zoom;
+        }
+
+        /* ══════════════════════════════
+           SCREENSHOT EXPORT
+           ══════════════════════════════ */
+        function takeScreenshot() {
+            const link = document.createElement('a');
+            link.download = 'physics-sandbox-' + Date.now() + '.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast('Screenshot saved!', '#34d399');
+        }
+        document.getElementById('screenshotBtn').addEventListener('click', takeScreenshot);
+
+        const mirrorXBtn = document.getElementById('mirrorXBtn');
+        const mirrorYBtn = document.getElementById('mirrorYBtn');
+        function updateMirrorUI() {
+            mirrorXBtn.style.background = mirrorX ? 'rgba(96,165,250,.2)' : 'rgba(96,165,250,.05)';
+            mirrorXBtn.style.borderColor = mirrorX ? 'rgba(96,165,250,.4)' : 'rgba(96,165,250,.15)';
+            mirrorYBtn.style.background = mirrorY ? 'rgba(244,114,182,.2)' : 'rgba(244,114,182,.05)';
+            mirrorYBtn.style.borderColor = mirrorY ? 'rgba(244,114,182,.4)' : 'rgba(244,114,182,.15)';
+        }
+        mirrorXBtn.addEventListener('click', () => { mirrorX = !mirrorX; updateMirrorUI(); });
+        mirrorYBtn.addEventListener('click', () => { mirrorY = !mirrorY; updateMirrorUI(); });
+
+        bodySearchInput.addEventListener('input', () => { searchQuery = bodySearchInput.value.trim().toLowerCase(); });
+
+        bodyNameInput.addEventListener('input', () => {
+            if (!selectedBody || selectedBody.isSensor) return;
+            if (!selectedBody.plugin) selectedBody.plugin = {};
+            selectedBody.plugin.name = bodyNameInput.value;
+        });
+
+        function updateBodyNameUI() {
+            if (selectedBody && !selectedBody.isSensor) {
+                bodyNameInput.value = selectedBody.plugin && selectedBody.plugin.name ? selectedBody.plugin.name : '';
+            } else {
+                bodyNameInput.value = '';
+            }
+        }
+
+        function drawSnapDot() {
+            if (!gridSnap || mode !== 'build' || !currentTool) return;
+            const isDraggingShape = dragTools.includes(currentTool);
+            const isDraggingSelected = currentTool === 'select' && selectedBody && isMouseDown;
+            if (!isDraggingShape && !isDraggingSelected) return;
+            ctx.save();
+            ctx.fillStyle = 'rgba(56,189,248,0.8)';
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(56,189,248,0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        function drawFPS() {
+            fpsFrames++; const now = performance.now();
+            if (now - fpsTime >= 500) { fpsDisplay = Math.round(fpsFrames / ((now - fpsTime) / 1000)); fpsFrames = 0; fpsTime = now; }
+            ctx.save(); ctx.font = '11px "JetBrains Mono",monospace'; ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.textAlign = 'right';
+            ctx.fillText(fpsDisplay + ' fps | Zoom: ' + camera.zoom.toFixed(1) + 'x', canvas.width - 12, 20); ctx.restore();
+        }
+
+        /* ══════════════════════════════
+           CANVAS INPUT
+           ══════════════════════════════ */
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+        canvas.addEventListener('mousedown', e => {
+            e.preventDefault();
+            ensureAudioCtx();
+            if (e.button === 2 || e.button === 1) { isPanning = true; panStartX = e.clientX - camera.x; panStartY = e.clientY - camera.y; return; }
+            if (mode !== 'build' || e.button !== 0) return;
+            const pos = getMousePos(e); mouseX = pos.x; mouseY = pos.y; isMouseDown = true;
+            if (dragTools.includes(currentTool)) { startX = pos.x; startY = pos.y; ghostParams = { tool: currentTool, sx: pos.x, sy: pos.y, ex: pos.x, ey: pos.y }; return; }
+            if (currentTool === 'freehand') {
+                if (freehandPoints.length > 0 && e.detail >= 2) { finalizeFreehand(); return; }
+                freehandPoints.push({ x: pos.x, y: pos.y }); return;
+            }
+            if (currentTool === 'select') { const body = getAnyUserBody(pos.x, pos.y); selectedBody = body || null; showPropsPanel(selectedBody); if (selectedBody) moveStartPos = { x: selectedBody.position.x, y: selectedBody.position.y }; return; }
+            if (currentTool === 'pin') { const body = getAnyUserBody(pos.x, pos.y); if (body && !body.isSensor) { const c = Constraint.create({ bodyA: body, pointA: { x: 0, y: 0 }, pointB: { x: pos.x, y: pos.y }, stiffness: 1, render: { type: 'pin' } }); Composite.add(world, c); userConstraints.push(c); pushUndo({ type: 'addConstraint', target: c }); } return; }
+            if (currentTool === 'link' || currentTool === 'spring') { const body = getAnyUserBody(pos.x, pos.y); if (body && !body.isSensor) { if (constraintStep === 1) { constraintBodyA = body; constraintStep = 2; } else if (constraintStep === 2 && body !== constraintBodyA) { const stiff = currentTool === 'spring' ? .05 : 1, damp = currentTool === 'spring' ? .01 : 0; const c = Constraint.create({ bodyA: constraintBodyA, bodyB: body, pointA: { x: 0, y: 0 }, pointB: { x: 0, y: 0 }, stiffness: stiff, damping: damp, render: { type: currentTool } }); Composite.add(world, c); userConstraints.push(c); pushUndo({ type: 'addConstraint', target: c }); constraintStep = 1; constraintBodyA = null; } } return; }
+            if (currentTool === 'rope') { const body = getAnyUserBody(pos.x, pos.y); if (constraintStep === 1) { if (body && !body.isSensor) { constraintBodyA = body; constraintStep = 2; } } else if (constraintStep === 2) { if (body && !body.isSensor && body !== constraintBodyA) { createChain(constraintBodyA, body, body.position); } else { createChain(constraintBodyA, null, { x: pos.x, y: pos.y }); } constraintStep = 1; constraintBodyA = null; } return; }
+            if (currentTool === 'motor') { const body = getAnyUserBody(pos.x, pos.y); if (body && !body.isSensor) { const c = Constraint.create({ bodyA: body, pointA: { x: 0, y: 0 }, pointB: { x: body.position.x, y: body.position.y }, stiffness: 1, render: { type: 'motor' } }); c.plugin = { type: 'motor', speed: 0.05 }; Composite.add(world, c); userConstraints.push(c); pushUndo({ type: 'addConstraint', target: c }); } return; }
+            if (currentTool === 'eraser') { const body = getAnyUserBody(pos.x, pos.y); if (body) { removeBodyWithUndo(body); if (selectedBody === body) { selectedBody = null; showPropsPanel(null); } } return; }
+        });
+        canvas.addEventListener('dblclick', e => {
+            if (mode !== 'build' || currentTool !== 'freehand') return;
+            e.preventDefault();
+            if (freehandPoints.length >= 3) finalizeFreehand();
+        });
+        window.addEventListener('mousemove', e => {
+            if (isPanning) { camera.x = e.clientX - panStartX; camera.y = e.clientY - panStartY; return; }
+            const pos = getMousePos(e); mouseX = pos.x; mouseY = pos.y; mouse.position.x = pos.x; mouse.position.y = pos.y;
+            if (mode !== 'build') return;
+            if (isMouseDown && ghostParams) { ghostParams.ex = pos.x; ghostParams.ey = pos.y; }
+            if (isMouseDown && currentTool === 'select' && selectedBody && !selectedBody.isSensor) {
+                Body.setPosition(selectedBody, { x: pos.x, y: pos.y }); Body.setVelocity(selectedBody, { x: 0, y: 0 }); Body.setAngularVelocity(selectedBody, 0);
+                updatingSliders = true; let deg = ((selectedBody.angle * 180 / Math.PI) % 360 + 360) % 360; angleSlider.value = deg; angleVal.innerHTML = Math.round(deg) + '&deg;'; updatingSliders = false;
+            }
+            if (currentTool === 'eraser') { hoveredBody = getAnyUserBody(pos.x, pos.y); canvas.style.cursor = hoveredBody ? 'pointer' : 'crosshair'; }
+            else if (currentTool === 'freehand') { canvas.style.cursor = 'crosshair'; hoveredBody = null; }
+            else if (currentTool === 'select' || constraintTools.includes(currentTool)) { canvas.style.cursor = 'pointer'; hoveredBody = null; }
+            else if (currentTool) { canvas.style.cursor = 'crosshair'; hoveredBody = null; }
+            else { canvas.style.cursor = 'default'; hoveredBody = null; }
+        });
+        window.addEventListener('mouseup', e => {
+            if (e.button === 2 || e.button === 1) { isPanning = false; return; }
+            if (mode !== 'build') { isMouseDown = false; return; }
+            if (isMouseDown && currentTool === 'select' && selectedBody && moveStartPos) {
+                const endPos = { x: selectedBody.position.x, y: selectedBody.position.y };
+                if (Math.abs(moveStartPos.x - endPos.x) > 1 || Math.abs(moveStartPos.y - endPos.y) > 1) pushUndo({ type: 'move', target: selectedBody, oldPos: moveStartPos, newPos: endPos });
+                moveStartPos = null;
+            }
+            if (ghostParams) finalizeBody();
+            if (currentTool === 'freehand' && freehandPoints.length > 0) { /* keep points for multi-click */ }
+            else isMouseDown = false;
+        });
+        canvas.addEventListener('selectstart', e => e.preventDefault());
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault(); const za = e.deltaY * -.001, nz = Math.max(.1, Math.min(3, camera.zoom + za));
+            const r = canvas.getBoundingClientRect(); const sx = e.clientX - r.left, sy = e.clientY - r.top;
+            const wx = (sx - camera.x) / camera.zoom, wy = (sy - camera.y) / camera.zoom;
+            camera.zoom = nz; camera.x = sx - wx * camera.zoom; camera.y = sy - wy * camera.zoom;
+        }, { passive: false });
+
+        function finalizeBody() {
+            if (!ghostParams) return;
+            const { tool, sx, sy, ex, ey } = ghostParams; ghostParams = null;
+            const dx = ex - sx, dy = ey - sy, dist = Math.sqrt(dx * dx + dy * dy);
+            const color = randomColor(), isStatic = (tool === 'platform');
+            let body = null;
+            if (dist < 10) {
+                if (tool === 'circle') body = Bodies.circle(sx, sy, 25, { restitution: .4, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'rectangle') body = Bodies.rectangle(sx, sy, 80, 50, { restitution: .25, friction: .2, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'triangle') body = Bodies.polygon(sx, sy, 3, 30, { restitution: .3, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'hexagon') body = Bodies.polygon(sx, sy, 6, 30, { restitution: .3, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'platform') body = Bodies.rectangle(sx, sy, 160, 20, { restitution: .25, friction: .2, frictionAir: .01, density: .001, isStatic: true, render: { fillStyle: color } });
+                else if (tool === 'sensor') { body = Bodies.rectangle(sx, sy, 100, 60, { isSensor: true, isStatic: true, label: 'Sensor Zone', render: { fillStyle: '#22d3ee' } }); body.plugin = { type: 'sensor', action: 'forceUp' }; }
+            } else {
+                if (tool === 'circle') body = Bodies.circle(sx, sy, Math.min(dist, 400), { restitution: .4, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'rectangle' || tool === 'platform') body = Bodies.rectangle(sx + dx / 2, sy + dy / 2, Math.max(10, Math.abs(dx)), Math.max(10, Math.abs(dy)), { restitution: .25, friction: .2, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'triangle') body = Bodies.polygon((sx + ex) / 2, (sy + ey) / 2, 3, Math.max(10, Math.min(dist / 2, 300)), { restitution: .3, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'hexagon') body = Bodies.polygon((sx + ex) / 2, (sy + ey) / 2, 6, Math.max(10, Math.min(dist / 2, 300)), { restitution: .3, friction: .15, frictionAir: .01, density: .001, isStatic, render: { fillStyle: color } });
+                else if (tool === 'sensor') { body = Bodies.rectangle(sx + dx / 2, sy + dy / 2, Math.max(10, Math.abs(dx)), Math.max(10, Math.abs(dy)), { isSensor: true, isStatic: true, label: 'Sensor Zone', render: { fillStyle: '#22d3ee' } }); body.plugin = { type: 'sensor', action: 'forceUp' }; }
+            }
+            if (body) { if (!body.isSensor) { Body.setVelocity(body, { x: 0, y: 0 }); Body.setAngularVelocity(body, 0); } Composite.add(world, body); userBodies.push(body); pushUndo({ type: 'add', target: body }); }
+            /* Mirror copies */
+            const mirrorActions = [];
+            if (mirrorX && body && !body.isSensor) {
+                const mx = WORLD_W - body.position.x;
+                const mb = mirrorCloneBody(body, mx, body.position.y, -body.angle);
+                if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+            }
+            if (mirrorY && body && !body.isSensor) {
+                const my = WORLD_H - body.position.y;
+                const mb = mirrorCloneBody(body, body.position.x, my, -body.angle);
+                if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+            }
+            if (mirrorX && mirrorY && body && !body.isSensor) {
+                const mx = WORLD_W - body.position.x, my = WORLD_H - body.position.y;
+                const mb = mirrorCloneBody(body, mx, my, body.angle);
+                if (mb) { Composite.add(world, mb); userBodies.push(mb); mirrorActions.push(mb); }
+            }
+            if (mirrorActions.length > 0) {
+                pushUndo({ type: 'addMirror', bodies: mirrorActions });
+            }
+        }
+
+        function mirrorCloneBody(original, x, y, angle) {
+            const kind = bodyShapeKind(original);
+            const opts = { isStatic: original.isStatic, friction: original.friction, frictionAir: original.frictionAir, restitution: original.restitution, density: original.density, render: { fillStyle: original.render?.fillStyle || '#ccc' } };
+            let mb;
+            if (kind === 'circle') { mb = Bodies.circle(x, y, Math.max(5, original.circleRadius), opts); }
+            else if (kind === 'rectangle') { mb = Bodies.rectangle(x, y, Math.max(10, getBodyWidth(original)), Math.max(10, getBodyHeight(original)), opts); }
+            else { mb = Bodies.polygon(x, y, original.vertices.length, Math.max(5, getBodyRadius(original)), opts); }
+            if (!mb) return null;
+            Body.setAngle(mb, angle);
+            if (original.plugin) mb.plugin = JSON.parse(JSON.stringify(original.plugin));
+            Body.setVelocity(mb, { x: 0, y: 0 }); Body.setAngularVelocity(mb, 0);
+            return mb;
+        }
+
+        /* ══════════════════════════════
+           MODE, TOOLS, SAVE/LOAD UI
+           ══════════════════════════════ */
+        const modeToggle = document.getElementById('modeToggle'), modeIndicator = document.getElementById('modeIndicator');
+        const stepBtn = document.getElementById('stepBtn'), resetBtn = document.getElementById('resetBtn');
+
+        function setMode(newMode) {
+            mode = newMode; selectedBody = null; constraintStep = 1; constraintBodyA = null;
+            ghostParams = null; isMouseDown = false; hoveredBody = null; freehandPoints = []; showPropsPanel(null);
+            if (mode === 'play') {
+                saveBuildState(); engine.timing.timeScale = parseFloat(timeScaleSlider.value) || 1;
+                Composite.add(world, mouseConstraint); canvas.style.cursor = 'grab';
+                modeToggle.className = 'mode-btn play w-full py-2.5 px-4 rounded-lg text-sm cursor-pointer'; modeToggle.textContent = 'PLAY MODE';
+                modeIndicator.textContent = 'PLAY'; modeIndicator.style.background = 'rgba(16,185,129,.08)'; modeIndicator.style.color = '#10b981'; modeIndicator.style.borderColor = 'rgba(16,185,129,.18)';
+                stepBtn.disabled = true;
+            } else {
+                engine.timing.timeScale = 0; Composite.remove(world, mouseConstraint); freezeAll(); canvas.style.cursor = 'default';
+                modeToggle.className = 'mode-btn build w-full py-2.5 px-4 rounded-lg text-sm cursor-pointer'; modeToggle.textContent = 'BUILD MODE';
+                modeIndicator.textContent = 'BUILD'; modeIndicator.style.background = 'rgba(245,158,11,.08)'; modeIndicator.style.color = '#f59e0b'; modeIndicator.style.borderColor = 'rgba(245,158,11,.18)';
+                stepBtn.disabled = false; activeOverlaps.clear();
+            }
+            syncTimeScaleUI(); syncResetBtn();
+        }
+
+        stepBtn.addEventListener('click', () => {
+            if (mode !== 'build') return;
+            const prev = engine.timing.timeScale;
+            engine.timing.timeScale = 1;
+            applySensorForces();
+            applyMotors();
+            Engine.update(engine, 1000 / 60);
+            engine.timing.timeScale = prev;
+            freezeAll();
+            if (selectedBody) updatePropsPanel(selectedBody);
+        });
+        resetBtn.addEventListener('click', () => resetToBuildState());
+
+        const toolButtons = document.querySelectorAll('.tool-btn'), toolHint = document.getElementById('toolHint');
+        const hintMap = {
+            circle: 'Click to spawn or drag to set radius',
+            rectangle: 'Click to spawn or drag to define corners',
+            triangle: 'Click to spawn or drag to set size',
+            hexagon: 'Click to spawn or drag to set size',
+            platform: 'Click to spawn or drag to draw platform',
+            sensor: 'Click to spawn or drag to define trigger zone',
+            pin: 'Click on a body to pin it to the background',
+            link: 'Click two bodies to create a rigid link',
+            spring: 'Click two bodies to create a bouncy spring',
+            rope: 'Click two bodies (or body then empty space) to create a rope chain',
+            motor: 'Click on a body to pin it and make it spin continuously',
+            freehand: 'Click to add vertices, double-click to close and create polygon',
+            select: 'Click a body to select and edit properties',
+            eraser: 'Click on any object to remove it'
+        };
+
+        function selectTool(tool) { currentTool = tool; if (tool !== 'select') { selectedBody = null; showPropsPanel(null); } constraintStep = 1; constraintBodyA = null; ghostParams = null; hoveredBody = null; freehandPoints = []; isMouseDown = false; updateToolUI(); }
+        function updateToolUI() { toolButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tool === currentTool)); toolHint.textContent = currentTool && hintMap[currentTool] ? hintMap[currentTool] : 'Select a tool from the sidebar to begin building'; }
+        toolButtons.forEach(btn => { btn.addEventListener('click', () => { const t = btn.dataset.tool; selectTool(currentTool === t ? null : t); }); });
+
+        document.getElementById('clearAll').addEventListener('click', () => {
+            if (mode === 'play') Composite.remove(world, mouseConstraint);
+            Composite.clear(world, false); userBodies = []; userConstraints = []; activeOverlaps.clear();
+            undoStack = []; redoStack = []; buildState = null; selectedBody = null; constraintStep = 1; constraintBodyA = null;
+            ghostParams = null; isMouseDown = false; hoveredBody = null; freehandPoints = []; showPropsPanel(null); rebuildBoundaries();
+            if (mode === 'play') Composite.add(world, mouseConstraint); syncResetBtn();
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', () => saveCurrentWorld(document.getElementById('saveNameInput').value));
+        document.getElementById('loadBtn').addEventListener('click', () => { const n = document.getElementById('loadDropdown').value; if (n) loadWorld(n); else showToast('Select a save to load', '#f59e0b'); });
+        document.getElementById('deleteSaveBtn').addEventListener('click', () => deleteSave(document.getElementById('loadDropdown').value));
+        document.getElementById('saveNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveCurrentWorld(e.target.value); } });
+
+        const objectCountEl = document.getElementById('objectCount');
+        function updateCounter() { objectCountEl.textContent = userBodies.length; }
+
+        const toolKeyOrder = ['circle','rectangle','triangle','hexagon','platform','sensor','pin','link','spring','select','eraser'];
+        document.addEventListener('keydown', e => {
+            ensureAudioCtx();
+            if (e.target.closest('input,textarea,select')) return;
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); performUndo(); return; }
+            if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) { e.preventDefault(); performRedo(); return; }
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') { e.preventDefault(); duplicateSelected(); return; }
+            if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) { e.preventDefault(); keysPressed[e.code] = true; return; }
+            if (e.code === 'Space') { e.preventDefault(); setMode(mode === 'build' ? 'play' : 'build'); return; }
+            if (e.code === 'Escape') { selectTool(null); return; }
+            if (e.code === 'Delete' || e.code === 'Backspace') { if (selectedBody && mode === 'build') { removeBodyWithUndo(selectedBody); selectedBody = null; showPropsPanel(null); } return; }
+            if (e.code === 'KeyG') { e.preventDefault(); toggleGridSnap(); return; }
+            if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); takeScreenshot(); return; }
+            if (e.code === 'KeyM') { e.preventDefault(); minimapVisible = !minimapVisible; return; }
+            if (e.code === 'KeyX' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); mirrorX = !mirrorX; updateMirrorUI(); return; }
+            if (e.code === 'KeyY' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); mirrorY = !mirrorY; updateMirrorUI(); return; }
+            const idx = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0'].indexOf(e.code);
+            if (idx > -1 && idx < toolKeyOrder.length) selectTool(toolKeyOrder[idx]);
+        });
+        document.addEventListener('keyup', e => { if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) keysPressed[e.code] = false; });
+
+        /* ══════════════════════════════
+           MAIN LOOP
+           ══════════════════════════════ */
+        engine.timing.timeScale = 0;
+        updateLoadDropdown();
+        updateStorageWarning();
+        syncResetBtn();
+
+        function draw() {
+            const ps = 25;
+            if (keysPressed['ArrowLeft']) camera.x += ps;
+            if (keysPressed['ArrowRight']) camera.x -= ps;
+            if (keysPressed['ArrowUp']) camera.y += ps;
+            if (keysPressed['ArrowDown']) camera.y -= ps;
+            drawBackground();
+            ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.zoom, camera.zoom);
+            drawGrid(); drawCollisionBounds(); drawSnapDot(); drawGhost(); drawConstraintPreview(); drawSensors(); drawBodies();
+            drawSelectedGlow(); drawAngleIndicators(); drawVelocityVectors(); drawMouseConstraintDrag(); drawConstraints();
+            /* Draw body names */
+            ctx.save(); ctx.font = '10px "Space Grotesk",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let i = 0; i < userBodies.length; i++) {
+                const b = userBodies[i]; if (!b.plugin || !b.plugin.name) continue;
+                const isMatch = searchQuery && b.plugin.name.toLowerCase().includes(searchQuery);
+                ctx.fillStyle = isMatch ? '#fbbf24' : 'rgba(255,255,255,.55)';
+                ctx.fillText(b.plugin.name, b.position.x, b.position.y + getBodyRadius(b) + 4);
+            }
+            ctx.restore();
+            /* Search highlight */
+            if (searchQuery) {
+                ctx.save();
+                for (let i = 0; i < userBodies.length; i++) {
+                    const b = userBodies[i]; if (!b.plugin || !b.plugin.name || !b.plugin.name.toLowerCase().includes(searchQuery)) continue;
+                    if (b.isSensor) continue;
+                    const v = b.vertices; ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y);
+                    for (let j = 1; j < v.length; j++) ctx.lineTo(v[j].x, v[j].y); ctx.closePath();
+                    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+                }
+                ctx.restore();
+            }
+            /* Mirror axes */
+            if (mirrorX) {
+                ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(96,165,250,.4)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(WORLD_W / 2, 0); ctx.lineTo(WORLD_W / 2, WORLD_H); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+            }
+            if (mirrorY) {
+                ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(244,114,182,.4)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(0, WORLD_H / 2); ctx.lineTo(WORLD_W, WORLD_H / 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+            }
+            if (currentTool === 'freehand' && freehandPoints.length > 0) {
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(245,158,11,.6)'; ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(freehandPoints[0].x, freehandPoints[0].y);
+                for (let i = 1; i < freehandPoints.length; i++) ctx.lineTo(freehandPoints[i].x, freehandPoints[i].y);
+                ctx.stroke(); ctx.setLineDash([]);
+                ctx.fillStyle = '#f59e0b';
+                freehandPoints.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill(); });
+                if (freehandPoints.length >= 3) {
+                    ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(245,158,11,.3)'; ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(freehandPoints[freehandPoints.length - 1].x, freehandPoints[freehandPoints.length - 1].y);
+                    ctx.lineTo(freehandPoints[0].x, freehandPoints[0].y);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+            ctx.restore(); drawFPS(); drawMinimap();
+            if (mode === 'play') {
+                applySensorForces(); applyMotors(); Engine.update(engine, 1000 / 60);
+                if (selectedBody) { updatingSliders = true; let d = ((selectedBody.angle * 180 / Math.PI) % 360 + 360) % 360; angleSlider.value = d; angleVal.innerHTML = Math.round(d) + '&deg;'; updatingSliders = false; }
+            }
+            updateCounter(); requestAnimationFrame(draw);
+        }
+        syncTimeScaleUI(); draw();
+    </script>
+</body>
+</html>
